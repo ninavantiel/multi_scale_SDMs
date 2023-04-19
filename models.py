@@ -1,9 +1,9 @@
 from torch import nn
 
 class cnn(nn.Module):
-    def __init__(self):
+    def __init__(self, n_features):
         super().__init__()
-        self.conv1 = nn.Conv2d(10, 32, kernel_size=3)
+        self.conv1 = nn.Conv2d(n_features, 32, kernel_size=3)
         self.act1 = nn.ReLU()
         self.pool1 = nn.MaxPool2d(kernel_size=3)
         self.drop1 = nn.Dropout(0.3)

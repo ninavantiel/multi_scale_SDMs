@@ -12,7 +12,7 @@ p_bioclim = MultipleRasterPatchProvider(data_path+'EnvironmentalRasters/Climate/
 p_hfp_s = RasterPatchProvider(data_path+'EnvironmentalRasters/HumanFootprint/summarized/HFP2009_WGS84.tif') # take the human footprint 2009 summurized raster
 
 # create dataset
-dataset = PatchesDataset(occurrences=data_path+'Presence_only_occurrences/Presences_only_train_sample.csv', providers=(p_hfp_d, p_bioclim, p_hfp_s, p_rgb))
+dataset = PatchesDataset(occurrences=data_path+'Presence_only_occurrences/Presences_only_train_sample.csv', providers=[p_hfp_d, p_bioclim, p_hfp_s, p_rgb])
 dataset_multi = PatchesDatasetMultiLabel(occurrences=data_path+'Presence_only_occurrences/Presences_only_train_sample.csv', providers=[p_hfp_d, p_bioclim, p_hfp_s, p_rgb])
 
 # print random tensors from dataset
@@ -22,4 +22,4 @@ for id in ids:
     tensor, label = dataset[id]
     label_multi = dataset_multi[id][1]
     print('Tensor type: {}, tensor shape: {}, label: {}, \nlabel_multi: {}'.format(type(tensor), tensor.shape, label, label_multi))
-    #dataset.plot_patch(id)
+    dataset.plot_patch(id)
