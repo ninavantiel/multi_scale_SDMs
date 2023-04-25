@@ -19,7 +19,7 @@ import rasterio
 from PIL import Image
 import pandas as pd
 
-from data.get_jpeg_patches_mean_std import standardize as jpeg_standardize
+# from data.get_jpeg_patches_mean_std import standardize as jpeg_standardize
 
 
 class PatchProvider(object):
@@ -233,116 +233,116 @@ class MultipleRasterPatchProvider(PatchProvider):
             result += '\n'
         return result
    
-class JpegPatchProvider(PatchProvider):
-    """JPEG patches provider for GLC23.
+# class JpegPatchProvider(PatchProvider):
+#     """JPEG patches provider for GLC23.
     
-    Provides tensors of multi-modal patches from JPEG patch files
-    of rasters of the GLC23 challenge.
+#     Provides tensors of multi-modal patches from JPEG patch files
+#     of rasters of the GLC23 challenge.
 
-    Attributes:
-        PatchProvider (_type_): _description_
-    """
-    def __init__(self, root_path, select=None, normalize=True, patch_transform=None, size=128, dataset_stats='jpeg_patches_stats.csv'):
-        #print("JpegPatchProvider __init__")
-        """Class constructor.
+#     Attributes:
+#         PatchProvider (_type_): _description_
+#     """
+#     def __init__(self, root_path, select=None, normalize=True, patch_transform=None, size=128, dataset_stats='jpeg_patches_stats.csv'):
+#         #print("JpegPatchProvider __init__")
+#         """Class constructor.
 
-        Args:
-            root_path (str): root path to the directory containg all patches modalities
-            channel_list (list, optional): list of channels to provide for the output tensor. Defaults to None.
-            normalize (bool, optional): normalize data. Defaults to False.
-            patch_transform (callable, optional): custom transformation functions. Defaults to None.
-            size (int, optional): default tensor sizes (must match patch sizes). Defaults to 128.
-            dataset_stats (str, optional): path to the csv file containing the mean and std values of the
-                                           jpeg patches dataset if `normalize` is True. If the file doesn't
-                                           exist, the values will be calculated and the file will be created once.
-                                           Defaults to 'jpeg_patches_stats.csv'
-        """
-        super().__init__(size, normalize)
-        self.patch_transform = patch_transform
-        self.root_path = root_path
-        self.ext = '.jpeg'
-        self.dataset_stats = os.path.join(self.root_path, dataset_stats)
+#         Args:
+#             root_path (str): root path to the directory containg all patches modalities
+#             channel_list (list, optional): list of channels to provide for the output tensor. Defaults to None.
+#             normalize (bool, optional): normalize data. Defaults to False.
+#             patch_transform (callable, optional): custom transformation functions. Defaults to None.
+#             size (int, optional): default tensor sizes (must match patch sizes). Defaults to 128.
+#             dataset_stats (str, optional): path to the csv file containing the mean and std values of the
+#                                            jpeg patches dataset if `normalize` is True. If the file doesn't
+#                                            exist, the values will be calculated and the file will be created once.
+#                                            Defaults to 'jpeg_patches_stats.csv'
+#         """
+#         super().__init__(size, normalize)
+#         self.patch_transform = patch_transform
+#         self.root_path = root_path
+#         self.ext = '.jpeg'
+#         self.dataset_stats = os.path.join(self.root_path, dataset_stats)
 
-        self.channel_folder = {'red': 'rgb', 'green': 'rgb', 'blue': 'rgb',
-                          'swir1':'swir1',
-                          'swir2':'swir2',
-                          'nir':'nir'}
-        if not select:
-            sub_dirs = next(os.walk(root_path))[1]
-            select = [k for k,v in self.channel_folder.items() if v in sub_dirs]
+#         self.channel_folder = {'red': 'rgb', 'green': 'rgb', 'blue': 'rgb',
+#                           'swir1':'swir1',
+#                           'swir2':'swir2',
+#                           'nir':'nir'}
+#         if not select:
+#             sub_dirs = next(os.walk(root_path))[1]
+#             select = [k for k,v in self.channel_folder.items() if v in sub_dirs]
 
-        self.channels = [c.lower() for c in select]
-        self.nb_layers = len(self.channels)
-        self.bands_names = self.channels
+#         self.channels = [c.lower() for c in select]
+#         self.nb_layers = len(self.channels)
+#         self.bands_names = self.channels
 
-    def __getitem__(self, item):
-        """Return a tensor composed of every channels of a jpeg patch.
+#     def __getitem__(self, item):
+#         """Return a tensor composed of every channels of a jpeg patch.
 
-        Args:
-            item (dict): dictionnary containing the patchID necessary to 
-                         identify the jpeg patch to return.
+#         Args:
+#             item (dict): dictionnary containing the patchID necessary to 
+#                          identify the jpeg patch to return.
 
-        Raises:
-            KeyError: the 'patchID' key is missing from item
-            Exception: item is not a dictionnary as expected
+#         Raises:
+#             KeyError: the 'patchID' key is missing from item
+#             Exception: item is not a dictionnary as expected
 
-        Returns:
-            (tensor): multi-channel patch tensor.
-        """
-        # print(f"JpegPatchProvider __getitem__ item={item}")
-        try:
-            id_ = str(int(item['patchID']))
-        except KeyError as e:
-            raise KeyError('The patchID key does not exists.')
-        except Exception as e:
-            raise Exception('An error has occured when trying to load a patch patchID.'
-                            'Check that the input argument is a dict containing the "patchID" key.')
+#         Returns:
+#             (tensor): multi-channel patch tensor.
+#         """
+#         # print(f"JpegPatchProvider __getitem__ item={item}")
+#         try:
+#             id_ = str(int(item['patchID']))
+#         except KeyError as e:
+#             raise KeyError('The patchID key does not exists.')
+#         except Exception as e:
+#             raise Exception('An error has occured when trying to load a patch patchID.'
+#                             'Check that the input argument is a dict containing the "patchID" key.')
 
-        # folders that contain patches
-        sub_folder_1 = id_[-2:]
-        sub_folder_2 = id_[-4:-2]
-        list_tensor = {'order': [], 'tensors':[]}
+#         # folders that contain patches
+#         sub_folder_1 = id_[-2:]
+#         sub_folder_2 = id_[-4:-2]
+#         list_tensor = {'order': [], 'tensors':[]}
 
-        for channel in self.channels:
-            if channel not in list_tensor['order']:
-                path = os.path.join(self.root_path, self.channel_folder[channel], sub_folder_1, sub_folder_2, id_+self.ext)
-                try:
-                    img = np.asarray(Image.open(path))
-                    if set(['red','green','blue']).issubset(self.channels) and channel in ['red','green','blue']:
-                        img = img.transpose((2,0,1))
-                        list_tensor['order'].extend(['red','green','blue'])
-                    else:
-                        if channel in ['red','green','blue']:
-                            img = img[:,:,'rgb'.find(channel[0])]
-                        img = np.expand_dims(img, axis=0)
-                        list_tensor['order'].append(channel)
-                except Exception as e:
-                    logging.critical('Could not open {} properly. Setting array to 0.'.format(path))
-                    img = np.zeros((1, self.patch_size, self.patch_size))
-                    list_tensor['order'].append(channel)
-                if self.normalize:
-                    if os.path.isfile(self.dataset_stats):
-                        df = pd.read_csv(self.dataset_stats, sep=';')
-                        mean, std = df.loc[0, 'mean'], df.loc[0, 'std']
-                    else:
-                        mean, std = jpeg_standardize(self.root_path, [self.ext], output=self.dataset_stats)
-                    img = (img-mean)/std
-                for depth in img:
-                    list_tensor['tensors'].append(np.expand_dims(depth, axis=0))
-        tensor = np.concatenate(list_tensor['tensors'])
-        if self.patch_transform:
-            for transform in self.patch_transform:
-                tensor = transform(tensor)
-        self.channels = list_tensor['order']
-        self.n_rows = img.shape[1]
-        self.n_cols = img.shape[2]
-        return tensor
+#         for channel in self.channels:
+#             if channel not in list_tensor['order']:
+#                 path = os.path.join(self.root_path, self.channel_folder[channel], sub_folder_1, sub_folder_2, id_+self.ext)
+#                 try:
+#                     img = np.asarray(Image.open(path))
+#                     if set(['red','green','blue']).issubset(self.channels) and channel in ['red','green','blue']:
+#                         img = img.transpose((2,0,1))
+#                         list_tensor['order'].extend(['red','green','blue'])
+#                     else:
+#                         if channel in ['red','green','blue']:
+#                             img = img[:,:,'rgb'.find(channel[0])]
+#                         img = np.expand_dims(img, axis=0)
+#                         list_tensor['order'].append(channel)
+#                 except Exception as e:
+#                     logging.critical('Could not open {} properly. Setting array to 0.'.format(path))
+#                     img = np.zeros((1, self.patch_size, self.patch_size))
+#                     list_tensor['order'].append(channel)
+#                 if self.normalize:
+#                     if os.path.isfile(self.dataset_stats):
+#                         df = pd.read_csv(self.dataset_stats, sep=';')
+#                         mean, std = df.loc[0, 'mean'], df.loc[0, 'std']
+#                     else:
+#                         mean, std = jpeg_standardize(self.root_path, [self.ext], output=self.dataset_stats)
+#                     img = (img-mean)/std
+#                 for depth in img:
+#                     list_tensor['tensors'].append(np.expand_dims(depth, axis=0))
+#         tensor = np.concatenate(list_tensor['tensors'])
+#         if self.patch_transform:
+#             for transform in self.patch_transform:
+#                 tensor = transform(tensor)
+#         self.channels = list_tensor['order']
+#         self.n_rows = img.shape[1]
+#         self.n_cols = img.shape[2]
+#         return tensor
 
-    def __str__(self):
-        # print("JpegPatchProvider __str__")
-        result = '-' * 50 + '\n'
-        result += 'n_layers: ' + str(self.nb_layers) + '\n'
-        result += 'n_rows: ' + str(self.n_rows) + '\n'
-        result += 'n_cols: ' + str(self.n_cols) + '\n'
-        result += '-' * 50
-        return result
+#     def __str__(self):
+#         # print("JpegPatchProvider __str__")
+#         result = '-' * 50 + '\n'
+#         result += 'n_layers: ' + str(self.nb_layers) + '\n'
+#         result += 'n_rows: ' + str(self.n_rows) + '\n'
+#         result += 'n_cols: ' + str(self.n_cols) + '\n'
+#         result += '-' * 50
+#         return result

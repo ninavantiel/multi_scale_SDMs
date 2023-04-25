@@ -23,3 +23,4 @@ config: {'epochs': 100, 'batch_size': 256, 'n_covariates': 34, 'n_species': 1003
 2023-04-25 10:50:44,370 INFO    MainThread:414203 [wandb_run.py:_redirect():2077] Wrapping output streams.
 2023-04-25 10:50:44,370 INFO    MainThread:414203 [wandb_run.py:_redirect():2102] Redirects installed.
 2023-04-25 10:50:44,371 INFO    MainThread:414203 [wandb_init.py:init():824] run started, returning control to user process
+2023-04-25 14:41:10,758 WARNING MsgRouterThr:414203 [router.py:message_loop():77] message_loop has been closed

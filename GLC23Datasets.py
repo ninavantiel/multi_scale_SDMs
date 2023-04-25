@@ -27,13 +27,13 @@ class PatchesDataset(Dataset):
         ref_targets=None
     ):
         #print("PatchesDataset __init__")
-        self.occurences = Path(occurrences)
+        self.occurences = occurrences#Path(occurrences)
         self.base_providers = providers
         self.transform = transform
         self.target_transform = target_transform
         self.provider = MetaPatchProvider(self.base_providers, self.transform)
 
-        df = pd.read_csv(self.occurences, sep=";", header='infer', low_memory=False)
+        df = occurrences#pd.read_csv(self.occurences, sep=";", header='infer', low_memory=False)
 
         self.observation_ids = df[id_name].values
         self.items = df[item_columns]
