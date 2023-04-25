@@ -1,0 +1,60 @@
+TRAINING DATA: n=100
+in_shape = torch.Size([6, 128, 128])
+out_shape = torch.Size([96])
+Number of covariates = 6
+Number of species = 96
+VALIDATION: n=100
+in_shape=torch.Size([6, 128, 128])
+out_shape=torch.Size([96]), n_species=96
+MODEL: cnn(
+  (conv1): Conv2d(6, 32, kernel_size=(3, 3), stride=(1, 1))
+  (act1): ReLU()
+  (pool1): MaxPool2d(kernel_size=3, stride=3, padding=0, dilation=1, ceil_mode=False)
+  (drop1): Dropout(p=0.3, inplace=False)
+  (conv2): Conv2d(32, 8, kernel_size=(3, 3), stride=(1, 1))
+  (act2): ReLU()
+  (pool2): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+  (flat): Flatten(start_dim=1, end_dim=-1)
+  (fc4): Linear(in_features=3200, out_features=96, bias=True)
+  (act4): ReLU()
+)
+EPOCH 0
+LOSS:  tensor(0.7197, dtype=torch.float64)
+0) AVG_AUC=0.6722170686456401
+EPOCH 1
+100%|█████████████████████████████████████████████| 9/9 [00:01<00:00,  6.78it/s]
+100%|████████████████████████████████████████████| 9/9 [00:00<00:00, 109.58it/s]
+LOSS:  tensor(0.7147, dtype=torch.float64)
+1) AVG_AUC=0.6503968253968253
+EPOCH 2
+LOSS:  tensor(0.7056, dtype=torch.float64)
+2) AVG_AUC=0.5670377241805813
+EPOCH 3
+LOSS:  tensor(0.7005, dtype=torch.float64)
+3) AVG_AUC=0.5209699031127603
+EPOCH 4
+LOSS:  tensor(0.6998, dtype=torch.float64)
+4) AVG_AUC=0.5293212739641311
+EPOCH 5
+LOSS:  tensor(0.6978, dtype=torch.float64)
+5) AVG_AUC=0.5371624407338693
+EPOCH 6
+LOSS:  tensor(0.6958, dtype=torch.float64)
+6) AVG_AUC=0.5063698206555349
+EPOCH 7
+LOSS:  tensor(0.6978, dtype=torch.float64)
+7) AVG_AUC=0.478342094413523
+EPOCH 8
+LOSS:  tensor(0.6951, dtype=torch.float64)
+8) AVG_AUC=0.48768810554524833
+EPOCH 9
+LOSS:  tensor(0.6962, dtype=torch.float64)
+9) AVG_AUC=0.4980699855699856
+100%|████████████████████████████████████████████| 9/9 [00:00<00:00, 115.43it/s]
+100%|████████████████████████████████████████████| 9/9 [00:00<00:00, 106.54it/s]
+100%|████████████████████████████████████████████| 9/9 [00:00<00:00, 116.94it/s]
+100%|████████████████████████████████████████████| 9/9 [00:00<00:00, 114.16it/s]
+100%|████████████████████████████████████████████| 9/9 [00:00<00:00, 130.44it/s]
+100%|████████████████████████████████████████████| 9/9 [00:00<00:00, 132.25it/s]
+100%|████████████████████████████████████████████| 9/9 [00:00<00:00, 126.86it/s]
+100%|████████████████████████████████████████████| 9/9 [00:00<00:00, 124.07it/s]

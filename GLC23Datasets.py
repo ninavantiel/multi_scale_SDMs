@@ -24,7 +24,7 @@ class PatchesDataset(Dataset):
         id_name="glcID",
         label_name="speciesId",
         item_columns=['lat', 'lon', 'patchID'],
-        device="cpu"
+        ref_targets=None
     ):
         #print("PatchesDataset __init__")
         self.occurences = Path(occurrences)
@@ -32,13 +32,17 @@ class PatchesDataset(Dataset):
         self.transform = transform
         self.target_transform = target_transform
         self.provider = MetaPatchProvider(self.base_providers, self.transform)
-        self.device = device
 
         df = pd.read_csv(self.occurences, sep=";", header='infer', low_memory=False)
 
         self.observation_ids = df[id_name].values
         self.items = df[item_columns]
         self.targets = df[label_name].values
+        
+        if ref_targets is None:
+            self.unique_sorted_targets = np.unique(np.sort(self.targets))
+        else:
+            self.unique_sorted_targets = ref_targets
 
     def __len__(self):
         #print("PatchesDataset __init__")
@@ -54,7 +58,7 @@ class PatchesDataset(Dataset):
         if self.target_transform:
             target = self.target_transform(target)
 
-        return torch.from_numpy(patch).float().to(self.device), target
+        return torch.from_numpy(patch).float(), target
     
     def plot_patch(self, index):
         item = self.items.iloc[index].to_dict()
@@ -70,29 +74,29 @@ class PatchesDatasetMultiLabel(PatchesDataset):
         id_name="glcID",
         label_name="speciesId",
         item_columns=['lat', 'lon', 'patchID'],
-        device="cpu"
+        ref_targets=None
     ):
         #print("PatchesDatasetMultiLabel __init__")
-        super().__init__(occurrences, providers, transform, target_transform, id_name, label_name, item_columns, device)
+        super().__init__(occurrences, providers, transform, target_transform, id_name, label_name, item_columns, ref_targets)
 
     def __getitem__(self, index):
-        print(f"PatchesDatasetMultiLabel __getitem__ index={index}")
+        # print(f"PatchesDatasetMultiLabel __getitem__ index={index}")
         item = self.items.iloc[index].to_dict()
         patchid_rows_i = self.items[self.items['patchID']==item['patchID']].index
-        self.targets_sorted = np.sort(self.targets)
+        # self.targets_sorted = np.sort(self.targets)
 
         patch = self.provider[item]
-        targets = np.zeros(len(self.targets))
+        item_targets = np.zeros(len(self.unique_sorted_targets))
         for idx in patchid_rows_i:
             target = self.targets[idx]
             if self.target_transform:
                 target = self.target_transform(target)
-            targets[np.where(self.targets_sorted==target)] = 1
+            item_targets[np.where(self.unique_sorted_targets==target)] = 1
 
-        print(index, len(targets), targets.sum(), targets[np.where(targets!=0)])
-        targets = torch.from_numpy(targets).to(self.device)
+        # print(index, len(item_targets), item_targets.sum(), item_targets[np.where(item_targets!=0)])
+        item_targets = torch.from_numpy(item_targets)
 
-        return torch.from_numpy(patch).float().to(self.device), targets
+        return torch.from_numpy(patch).float(), item_targets
 '''
 class PatchesDatasetOld(Dataset):
     def __init__(
@@ -151,8 +155,7 @@ class TimeSeriesDataset(Dataset):
         target_transform=None,
         id_name="glcID",
         label_name="speciesId",
-        item_columns=['timeSerieID'],
-        device="cpu"
+        item_columns=['timeSerieID']
     ):
         #print("TimeSeriesDataset __init__")
         self.occurences = Path(occurrences)
@@ -160,7 +163,6 @@ class TimeSeriesDataset(Dataset):
         self.transform = transform
         self.target_transform = target_transform
         self.provider = MetaTimeSeriesProvider(self.base_providers, self.transform)
-        self.device = device
 
         df = pd.read_csv(self.occurences, sep=";", header='infer', low_memory=False)
 
@@ -181,7 +183,7 @@ class TimeSeriesDataset(Dataset):
         if self.target_transform:
             target = self.target_transform(target)
 
-        return torch.from_numpy(patch).float().to(self.device), target
+        return torch.from_numpy(patch).float(), target
 
     def plot_ts(self, index):
         item = self.items.iloc[index].to_dict()

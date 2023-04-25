@@ -1,0 +1,641 @@
+Dataset device: cuda
+TRAINING DATA: n=100
+in_shape = torch.Size([6, 128, 128])
+out_shape = torch.Size([96])
+Number of covariates = 6
+Number of species = 96
+Dataset device: cuda
+VALIDATION: n=100
+in_shape=torch.Size([6, 128, 128])
+out_shape=torch.Size([96]), n_species=96
+MODEL: cnn(
+  (conv1): Conv2d(6, 32, kernel_size=(3, 3), stride=(1, 1))
+  (act1): ReLU()
+  (pool1): MaxPool2d(kernel_size=3, stride=3, padding=0, dilation=1, ceil_mode=False)
+  (drop1): Dropout(p=0.3, inplace=False)
+  (conv2): Conv2d(32, 8, kernel_size=(3, 3), stride=(1, 1))
+  (act2): ReLU()
+  (pool2): MaxPool2d(kernel_size=2, stride=2, padding=0, dilation=1, ceil_mode=False)
+  (flat): Flatten(start_dim=1, end_dim=-1)
+  (fc4): Linear(in_features=3200, out_features=96, bias=True)
+  (act4): ReLU()
+)
+EPOCH 0
+100%|█████████████████| 9/9 [00:01<00:00,  8.99it/s]
+100%|████████████████| 9/9 [00:00<00:00, 120.73it/s]
+100%|████████████████| 9/9 [00:00<00:00, 126.18it/s]
+100%|████████████████| 9/9 [00:00<00:00, 127.37it/s]
+  0%|                         | 0/9 [00:00<?, ?it/s]
+LOSS:  tensor(0.7401, dtype=torch.float64)
+0) AVG_AUC=0.5483740465883324
+EPOCH 1
+LOSS:  tensor(0.7127, dtype=torch.float64)
+1) AVG_AUC=0.5374922696351268
+EPOCH 2
+LOSS:  tensor(0.6998, dtype=torch.float64)
+2) AVG_AUC=0.5630720470006184
+EPOCH 3
+LOSS:  tensor(0.6964, dtype=torch.float64)
+3) AVG_AUC=0.5604179550608122
+EPOCH 4
+LOSS:  tensor(0.6948, dtype=torch.float64)
+4) AVG_AUC=0.5304009482580911
+EPOCH 5
+LOSS:  tensor(0.6944, dtype=torch.float64)
+5) AVG_AUC=0.5359565038136467
+EPOCH 6
+LOSS:  tensor(0.6952, dtype=torch.float64)
+6) AVG_AUC=0.5397572665429808
+EPOCH 7
+LOSS:  tensor(0.6940, dtype=torch.float64)
+7) AVG_AUC=0.5425273139558854
+EPOCH 8
+LOSS:  tensor(0.6943, dtype=torch.float64)
+8) AVG_AUC=0.5443027210884354
+EPOCH 9
+LOSS:  tensor(0.6934, dtype=torch.float64)
+9) AVG_AUC=0.5216037930323644
+EPOCH 10
+LOSS:  tensor(0.6943, dtype=torch.float64)
+10) AVG_AUC=0.5231292517006803
+EPOCH 11
+LOSS:  tensor(0.6935, dtype=torch.float64)
+11) AVG_AUC=0.5256648113790972
+EPOCH 12
+LOSS:  tensor(0.6942, dtype=torch.float64)
+12) AVG_AUC=0.5276901669758812
+EPOCH 13
+LOSS:  tensor(0.6941, dtype=torch.float64)
+13) AVG_AUC=0.5292207792207793
+EPOCH 14
+100%|████████████████| 9/9 [00:00<00:00, 127.28it/s]
+100%|████████████████| 9/9 [00:00<00:00, 128.12it/s]
+100%|████████████████| 9/9 [00:00<00:00, 128.21it/s]
+100%|████████████████| 9/9 [00:00<00:00, 149.69it/s]
+100%|████████████████| 9/9 [00:00<00:00, 149.67it/s]
+100%|████████████████| 9/9 [00:00<00:00, 149.72it/s]
+100%|████████████████| 9/9 [00:00<00:00, 149.15it/s]
+100%|████████████████| 9/9 [00:00<00:00, 139.96it/s]
+100%|████████████████| 9/9 [00:00<00:00, 152.37it/s]
+100%|████████████████| 9/9 [00:00<00:00, 151.75it/s]
+100%|████████████████| 9/9 [00:00<00:00, 144.32it/s]
+100%|████████████████| 9/9 [00:00<00:00, 150.61it/s]
+100%|████████████████| 9/9 [00:00<00:00, 149.99it/s]
+100%|████████████████| 9/9 [00:00<00:00, 151.02it/s]
+100%|████████████████| 9/9 [00:00<00:00, 148.52it/s]
+100%|████████████████| 9/9 [00:00<00:00, 143.75it/s]
+100%|████████████████| 9/9 [00:00<00:00, 138.92it/s]
+14) AVG_AUC=0.5297258297258297
+EPOCH 15
+LOSS:  tensor(0.6935, dtype=torch.float64)
+15) AVG_AUC=0.530741084312513
+EPOCH 16
+LOSS:  tensor(0.6943, dtype=torch.float64)
+16) AVG_AUC=0.530741084312513
+EPOCH 17
+LOSS:  tensor(0.6932, dtype=torch.float64)
+17) AVG_AUC=0.5317614924757782
+EPOCH 18
+LOSS:  tensor(0.6932, dtype=torch.float64)
+18) AVG_AUC=0.5338023088023087
+EPOCH 19
+LOSS:  tensor(0.6934, dtype=torch.float64)
+19) AVG_AUC=0.5343125128839413
+EPOCH 20
+LOSS:  tensor(0.6936, dtype=torch.float64)
+20) AVG_AUC=0.5343125128839413
+EPOCH 21
+LOSS:  tensor(0.6932, dtype=torch.float64)
+21) AVG_AUC=0.5343125128839413
+EPOCH 22
+LOSS:  tensor(0.6933, dtype=torch.float64)
+22) AVG_AUC=0.5348175633889919
+EPOCH 23
+LOSS:  tensor(0.6932, dtype=torch.float64)
+23) AVG_AUC=0.5353277674706246
+EPOCH 24
+LOSS:  tensor(0.6933, dtype=torch.float64)
+24) AVG_AUC=0.5343176664605236
+EPOCH 25
+LOSS:  tensor(0.6935, dtype=torch.float64)
+25) AVG_AUC=0.5343176664605236
+EPOCH 26
+LOSS:  tensor(0.6931, dtype=torch.float64)
+26) AVG_AUC=0.5333075654504226
+EPOCH 27
+LOSS:  tensor(0.6932, dtype=torch.float64)
+27) AVG_AUC=0.5333075654504226
+EPOCH 28
+LOSS:  tensor(0.6932, dtype=torch.float64)
+28) AVG_AUC=0.5333075654504226
+EPOCH 29
+LOSS:  tensor(0.6932, dtype=torch.float64)
+29) AVG_AUC=0.5338177695320552
+EPOCH 30
+LOSS:  tensor(0.6933, dtype=torch.float64)
+30) AVG_AUC=0.5343228200371057
+EPOCH 31
+100%|████████████████| 9/9 [00:00<00:00, 141.85it/s]
+100%|████████████████| 9/9 [00:00<00:00, 149.81it/s]
+100%|████████████████| 9/9 [00:00<00:00, 147.14it/s]
+100%|████████████████| 9/9 [00:00<00:00, 144.71it/s]
+100%|████████████████| 9/9 [00:00<00:00, 141.43it/s]
+100%|████████████████| 9/9 [00:00<00:00, 130.91it/s]
+100%|████████████████| 9/9 [00:00<00:00, 150.55it/s]
+100%|████████████████| 9/9 [00:00<00:00, 151.22it/s]
+100%|████████████████| 9/9 [00:00<00:00, 146.72it/s]
+100%|████████████████| 9/9 [00:00<00:00, 150.26it/s]
+100%|████████████████| 9/9 [00:00<00:00, 150.33it/s]
+100%|████████████████| 9/9 [00:00<00:00, 149.77it/s]
+100%|████████████████| 9/9 [00:00<00:00, 150.50it/s]
+100%|████████████████| 9/9 [00:00<00:00, 150.12it/s]
+100%|████████████████| 9/9 [00:00<00:00, 149.57it/s]
+100%|████████████████| 9/9 [00:00<00:00, 150.63it/s]
+  0%|                         | 0/9 [00:00<?, ?it/s]
+LOSS:  tensor(0.6934, dtype=torch.float64)
+31) AVG_AUC=0.535338074623789
+EPOCH 32
+LOSS:  tensor(0.6935, dtype=torch.float64)
+32) AVG_AUC=0.535338074623789
+EPOCH 33
+LOSS:  tensor(0.6934, dtype=torch.float64)
+33) AVG_AUC=0.5368532261389405
+EPOCH 34
+LOSS:  tensor(0.6934, dtype=torch.float64)
+34) AVG_AUC=0.5368532261389405
+EPOCH 35
+LOSS:  tensor(0.6935, dtype=torch.float64)
+35) AVG_AUC=0.5368532261389405
+EPOCH 36
+LOSS:  tensor(0.6933, dtype=torch.float64)
+36) AVG_AUC=0.5358431251288395
+EPOCH 37
+LOSS:  tensor(0.6931, dtype=torch.float64)
+37) AVG_AUC=0.5358431251288395
+EPOCH 38
+LOSS:  tensor(0.6934, dtype=torch.float64)
+38) AVG_AUC=0.5358431251288395
+EPOCH 39
+LOSS:  tensor(0.6932, dtype=torch.float64)
+39) AVG_AUC=0.5358431251288395
+EPOCH 40
+LOSS:  tensor(0.6934, dtype=torch.float64)
+40) AVG_AUC=0.5368532261389405
+EPOCH 41
+LOSS:  tensor(0.6933, dtype=torch.float64)
+41) AVG_AUC=0.5368532261389405
+EPOCH 42
+LOSS:  tensor(0.6937, dtype=torch.float64)
+42) AVG_AUC=0.5368532261389405
+EPOCH 43
+LOSS:  tensor(0.6931, dtype=torch.float64)
+43) AVG_AUC=0.5368532261389405
+EPOCH 44
+LOSS:  tensor(0.6937, dtype=torch.float64)
+44) AVG_AUC=0.5368532261389405
+EPOCH 45
+LOSS:  tensor(0.6931, dtype=torch.float64)
+45) AVG_AUC=0.5368532261389405
+EPOCH 46
+LOSS:  tensor(0.6932, dtype=torch.float64)
+46) AVG_AUC=0.5368532261389405
+EPOCH 47
+LOSS:  tensor(0.6931, dtype=torch.float64)
+47) AVG_AUC=0.5368532261389405
+EPOCH 48
+100%|████████████████| 9/9 [00:00<00:00, 147.44it/s]
+100%|████████████████| 9/9 [00:00<00:00, 149.40it/s]
+100%|████████████████| 9/9 [00:00<00:00, 150.67it/s]
+100%|████████████████| 9/9 [00:00<00:00, 146.94it/s]
+100%|████████████████| 9/9 [00:00<00:00, 149.86it/s]
+100%|████████████████| 9/9 [00:00<00:00, 149.80it/s]
+100%|████████████████| 9/9 [00:00<00:00, 150.37it/s]
+100%|████████████████| 9/9 [00:00<00:00, 148.96it/s]
+100%|████████████████| 9/9 [00:00<00:00, 137.65it/s]
+100%|████████████████| 9/9 [00:00<00:00, 146.12it/s]
+100%|████████████████| 9/9 [00:00<00:00, 151.10it/s]
+100%|████████████████| 9/9 [00:00<00:00, 144.42it/s]
+100%|████████████████| 9/9 [00:00<00:00, 146.53it/s]
+100%|████████████████| 9/9 [00:00<00:00, 150.58it/s]
+100%|████████████████| 9/9 [00:00<00:00, 132.26it/s]
+100%|████████████████| 9/9 [00:00<00:00, 150.92it/s]
+100%|████████████████| 9/9 [00:00<00:00, 150.64it/s]
+  0%|                         | 0/9 [00:00<?, ?it/s]
+48) AVG_AUC=0.5368532261389405
+EPOCH 49
+LOSS:  tensor(0.6932, dtype=torch.float64)
+49) AVG_AUC=0.5368532261389405
+EPOCH 50
+LOSS:  tensor(0.6934, dtype=torch.float64)
+50) AVG_AUC=0.5368532261389405
+EPOCH 51
+LOSS:  tensor(0.6932, dtype=torch.float64)
+51) AVG_AUC=0.5368532261389405
+EPOCH 52
+LOSS:  tensor(0.6932, dtype=torch.float64)
+52) AVG_AUC=0.5368532261389405
+EPOCH 53
+LOSS:  tensor(0.6934, dtype=torch.float64)
+53) AVG_AUC=0.5373582766439909
+EPOCH 54
+LOSS:  tensor(0.6932, dtype=torch.float64)
+54) AVG_AUC=0.5373582766439909
+EPOCH 55
+LOSS:  tensor(0.6931, dtype=torch.float64)
+55) AVG_AUC=0.5373582766439909
+EPOCH 56
+LOSS:  tensor(0.6933, dtype=torch.float64)
+56) AVG_AUC=0.5373582766439909
+EPOCH 57
+LOSS:  tensor(0.6931, dtype=torch.float64)
+57) AVG_AUC=0.5378633271490415
+EPOCH 58
+LOSS:  tensor(0.6931, dtype=torch.float64)
+58) AVG_AUC=0.5378633271490415
+EPOCH 59
+LOSS:  tensor(0.6932, dtype=torch.float64)
+59) AVG_AUC=0.5378633271490415
+EPOCH 60
+LOSS:  tensor(0.6931, dtype=torch.float64)
+60) AVG_AUC=0.492408781694496
+EPOCH 61
+LOSS:  tensor(0.6932, dtype=torch.float64)
+61) AVG_AUC=0.492408781694496
+EPOCH 62
+LOSS:  tensor(0.6933, dtype=torch.float64)
+62) AVG_AUC=0.492408781694496
+EPOCH 63
+LOSS:  tensor(0.6931, dtype=torch.float64)
+63) AVG_AUC=0.492408781694496
+EPOCH 64
+LOSS:  tensor(0.6933, dtype=torch.float64)
+64) AVG_AUC=0.492408781694496
+100%|████████████████| 9/9 [00:00<00:00, 150.31it/s]
+100%|████████████████| 9/9 [00:00<00:00, 150.00it/s]
+100%|████████████████| 9/9 [00:00<00:00, 149.02it/s]
+100%|████████████████| 9/9 [00:00<00:00, 142.66it/s]
+100%|████████████████| 9/9 [00:00<00:00, 150.03it/s]
+100%|████████████████| 9/9 [00:00<00:00, 149.29it/s]
+100%|████████████████| 9/9 [00:00<00:00, 150.20it/s]
+100%|████████████████| 9/9 [00:00<00:00, 145.53it/s]
+100%|████████████████| 9/9 [00:00<00:00, 137.48it/s]
+100%|████████████████| 9/9 [00:00<00:00, 150.34it/s]
+100%|████████████████| 9/9 [00:00<00:00, 149.81it/s]
+100%|████████████████| 9/9 [00:00<00:00, 150.34it/s]
+100%|████████████████| 9/9 [00:00<00:00, 148.40it/s]
+100%|████████████████| 9/9 [00:00<00:00, 149.67it/s]
+100%|████████████████| 9/9 [00:00<00:00, 134.58it/s]
+100%|████████████████| 9/9 [00:00<00:00, 149.30it/s]
+100%|████████████████| 9/9 [00:00<00:00, 146.25it/s]
+  0%|                         | 0/9 [00:00<?, ?it/s]
+LOSS:  tensor(0.6932, dtype=torch.float64)
+65) AVG_AUC=0.492408781694496
+EPOCH 66
+LOSS:  tensor(0.6931, dtype=torch.float64)
+66) AVG_AUC=0.492408781694496
+EPOCH 67
+LOSS:  tensor(0.6931, dtype=torch.float64)
+67) AVG_AUC=0.492408781694496
+EPOCH 68
+LOSS:  tensor(0.6931, dtype=torch.float64)
+68) AVG_AUC=0.492408781694496
+EPOCH 69
+LOSS:  tensor(0.6931, dtype=torch.float64)
+69) AVG_AUC=0.4929138321995465
+EPOCH 70
+LOSS:  tensor(0.6933, dtype=torch.float64)
+70) AVG_AUC=0.4929138321995465
+EPOCH 71
+LOSS:  tensor(0.6932, dtype=torch.float64)
+71) AVG_AUC=0.4929138321995465
+EPOCH 72
+LOSS:  tensor(0.6933, dtype=torch.float64)
+72) AVG_AUC=0.4929138321995465
+EPOCH 73
+LOSS:  tensor(0.6932, dtype=torch.float64)
+73) AVG_AUC=0.4929138321995465
+EPOCH 74
+LOSS:  tensor(0.6934, dtype=torch.float64)
+74) AVG_AUC=0.4929138321995465
+EPOCH 75
+LOSS:  tensor(0.6932, dtype=torch.float64)
+75) AVG_AUC=0.4929138321995465
+EPOCH 76
+LOSS:  tensor(0.6931, dtype=torch.float64)
+76) AVG_AUC=0.4929138321995465
+EPOCH 77
+LOSS:  tensor(0.6931, dtype=torch.float64)
+77) AVG_AUC=0.4929138321995465
+EPOCH 78
+LOSS:  tensor(0.6934, dtype=torch.float64)
+78) AVG_AUC=0.4929138321995465
+EPOCH 79
+LOSS:  tensor(0.6934, dtype=torch.float64)
+79) AVG_AUC=0.4929138321995465
+EPOCH 80
+LOSS:  tensor(0.6932, dtype=torch.float64)
+80) AVG_AUC=0.4929138321995465
+EPOCH 81
+100%|████████████████| 9/9 [00:00<00:00, 148.88it/s]
+100%|████████████████| 9/9 [00:00<00:00, 147.06it/s]
+100%|████████████████| 9/9 [00:00<00:00, 149.36it/s]
+100%|████████████████| 9/9 [00:00<00:00, 135.09it/s]
+100%|████████████████| 9/9 [00:00<00:00, 119.19it/s]
+100%|████████████████| 9/9 [00:00<00:00, 132.38it/s]
+100%|████████████████| 9/9 [00:00<00:00, 150.63it/s]
+100%|████████████████| 9/9 [00:00<00:00, 149.05it/s]
+100%|████████████████| 9/9 [00:00<00:00, 150.83it/s]
+100%|████████████████| 9/9 [00:00<00:00, 150.30it/s]
+100%|████████████████| 9/9 [00:00<00:00, 150.17it/s]
+100%|████████████████| 9/9 [00:00<00:00, 130.98it/s]
+100%|████████████████| 9/9 [00:00<00:00, 149.65it/s]
+100%|████████████████| 9/9 [00:00<00:00, 148.13it/s]
+100%|████████████████| 9/9 [00:00<00:00, 149.42it/s]
+100%|████████████████| 9/9 [00:00<00:00, 149.29it/s]
+100%|████████████████| 9/9 [00:00<00:00, 149.47it/s]
+81) AVG_AUC=0.4929138321995465
+EPOCH 82
+LOSS:  tensor(0.6932, dtype=torch.float64)
+82) AVG_AUC=0.493418882704597
+EPOCH 83
+LOSS:  tensor(0.6933, dtype=torch.float64)
+83) AVG_AUC=0.493418882704597
+EPOCH 84
+LOSS:  tensor(0.6931, dtype=torch.float64)
+84) AVG_AUC=0.49392393320964756
+EPOCH 85
+LOSS:  tensor(0.6932, dtype=torch.float64)
+85) AVG_AUC=0.49392393320964756
+EPOCH 86
+LOSS:  tensor(0.6931, dtype=torch.float64)
+86) AVG_AUC=0.49442898371469796
+EPOCH 87
+LOSS:  tensor(0.6932, dtype=torch.float64)
+87) AVG_AUC=0.49442898371469796
+EPOCH 88
+LOSS:  tensor(0.6932, dtype=torch.float64)
+88) AVG_AUC=0.49442898371469796
+EPOCH 89
+LOSS:  tensor(0.6931, dtype=torch.float64)
+89) AVG_AUC=0.49442898371469796
+EPOCH 90
+LOSS:  tensor(0.6932, dtype=torch.float64)
+90) AVG_AUC=0.49442898371469796
+EPOCH 91
+LOSS:  tensor(0.6931, dtype=torch.float64)
+91) AVG_AUC=0.49442898371469796
+EPOCH 92
+LOSS:  tensor(0.6932, dtype=torch.float64)
+92) AVG_AUC=0.49442898371469796
+EPOCH 93
+LOSS:  tensor(0.6932, dtype=torch.float64)
+93) AVG_AUC=0.49442898371469796
+EPOCH 94
+LOSS:  tensor(0.6931, dtype=torch.float64)
+94) AVG_AUC=0.49442898371469796
+EPOCH 95
+LOSS:  tensor(0.6931, dtype=torch.float64)
+95) AVG_AUC=0.49442898371469796
+EPOCH 96
+LOSS:  tensor(0.6932, dtype=torch.float64)
+96) AVG_AUC=0.49442898371469796
+EPOCH 97
+LOSS:  tensor(0.6932, dtype=torch.float64)
+97) AVG_AUC=0.49442898371469796
+EPOCH 98
+LOSS:  tensor(0.6932, dtype=torch.float64)
+100%|████████████████| 9/9 [00:00<00:00, 148.42it/s]
+100%|████████████████| 9/9 [00:00<00:00, 138.78it/s]
+100%|████████████████| 9/9 [00:00<00:00, 148.86it/s]
+100%|████████████████| 9/9 [00:00<00:00, 146.85it/s]
+100%|████████████████| 9/9 [00:00<00:00, 146.67it/s]
+100%|████████████████| 9/9 [00:00<00:00, 142.93it/s]
+100%|████████████████| 9/9 [00:00<00:00, 150.90it/s]
+100%|████████████████| 9/9 [00:00<00:00, 149.57it/s]
+100%|████████████████| 9/9 [00:00<00:00, 150.27it/s]
+100%|████████████████| 9/9 [00:00<00:00, 150.78it/s]
+100%|████████████████| 9/9 [00:00<00:00, 150.39it/s]
+100%|████████████████| 9/9 [00:00<00:00, 142.12it/s]
+100%|████████████████| 9/9 [00:00<00:00, 141.11it/s]
+100%|████████████████| 9/9 [00:00<00:00, 146.23it/s]
+100%|████████████████| 9/9 [00:00<00:00, 149.62it/s]
+100%|████████████████| 9/9 [00:00<00:00, 149.79it/s]
+100%|████████████████| 9/9 [00:00<00:00, 150.02it/s]
+98) AVG_AUC=0.49442898371469796
+EPOCH 99
+LOSS:  tensor(0.6932, dtype=torch.float64)
+99) AVG_AUC=0.49442898371469796
+EPOCH 100
+LOSS:  tensor(0.6931, dtype=torch.float64)
+100) AVG_AUC=0.49442898371469796
+EPOCH 101
+LOSS:  tensor(0.6931, dtype=torch.float64)
+101) AVG_AUC=0.49442898371469796
+EPOCH 102
+LOSS:  tensor(0.6931, dtype=torch.float64)
+102) AVG_AUC=0.49442898371469796
+EPOCH 103
+LOSS:  tensor(0.6931, dtype=torch.float64)
+103) AVG_AUC=0.49442898371469796
+EPOCH 104
+LOSS:  tensor(0.6932, dtype=torch.float64)
+104) AVG_AUC=0.49442898371469796
+EPOCH 105
+LOSS:  tensor(0.6933, dtype=torch.float64)
+105) AVG_AUC=0.49442898371469796
+EPOCH 106
+LOSS:  tensor(0.6931, dtype=torch.float64)
+106) AVG_AUC=0.49442898371469796
+EPOCH 107
+LOSS:  tensor(0.6931, dtype=torch.float64)
+107) AVG_AUC=0.49442898371469796
+EPOCH 108
+LOSS:  tensor(0.6931, dtype=torch.float64)
+108) AVG_AUC=0.49493403421974846
+EPOCH 109
+LOSS:  tensor(0.6931, dtype=torch.float64)
+109) AVG_AUC=0.49543908472479903
+EPOCH 110
+LOSS:  tensor(0.6931, dtype=torch.float64)
+110) AVG_AUC=0.49543908472479903
+EPOCH 111
+LOSS:  tensor(0.6932, dtype=torch.float64)
+111) AVG_AUC=0.49543908472479903
+EPOCH 112
+LOSS:  tensor(0.6932, dtype=torch.float64)
+112) AVG_AUC=0.49543908472479903
+EPOCH 113
+LOSS:  tensor(0.6931, dtype=torch.float64)
+113) AVG_AUC=0.49543908472479903
+EPOCH 114
+LOSS:  tensor(0.6932, dtype=torch.float64)
+114) AVG_AUC=0.49543908472479903
+EPOCH 115
+LOSS:  tensor(0.6931, dtype=torch.float64)
+115) AVG_AUC=0.49543908472479903
+EPOCH 116
+100%|████████████████| 9/9 [00:00<00:00, 149.74it/s]
+100%|████████████████| 9/9 [00:00<00:00, 149.23it/s]
+100%|████████████████| 9/9 [00:00<00:00, 149.74it/s]
+100%|████████████████| 9/9 [00:00<00:00, 149.66it/s]
+100%|████████████████| 9/9 [00:00<00:00, 149.29it/s]
+100%|████████████████| 9/9 [00:00<00:00, 148.92it/s]
+100%|████████████████| 9/9 [00:00<00:00, 150.20it/s]
+100%|████████████████| 9/9 [00:00<00:00, 146.05it/s]
+100%|████████████████| 9/9 [00:00<00:00, 149.93it/s]
+100%|████████████████| 9/9 [00:00<00:00, 150.30it/s]
+100%|████████████████| 9/9 [00:00<00:00, 150.47it/s]
+100%|████████████████| 9/9 [00:00<00:00, 150.20it/s]
+100%|████████████████| 9/9 [00:00<00:00, 149.34it/s]
+100%|████████████████| 9/9 [00:00<00:00, 149.95it/s]
+100%|████████████████| 9/9 [00:00<00:00, 149.80it/s]
+100%|████████████████| 9/9 [00:00<00:00, 150.90it/s]
+100%|████████████████| 9/9 [00:00<00:00, 149.35it/s]
+  0%|                         | 0/9 [00:00<?, ?it/s]
+LOSS:  tensor(0.6931, dtype=torch.float64)
+116) AVG_AUC=0.49543908472479903
+EPOCH 117
+LOSS:  tensor(0.6931, dtype=torch.float64)
+117) AVG_AUC=0.49543908472479903
+EPOCH 118
+LOSS:  tensor(0.6931, dtype=torch.float64)
+118) AVG_AUC=0.49543908472479903
+EPOCH 119
+LOSS:  tensor(0.6932, dtype=torch.float64)
+119) AVG_AUC=0.49543908472479903
+EPOCH 120
+LOSS:  tensor(0.6931, dtype=torch.float64)
+120) AVG_AUC=0.49543908472479903
+EPOCH 121
+LOSS:  tensor(0.6931, dtype=torch.float64)
+121) AVG_AUC=0.49543908472479903
+EPOCH 122
+LOSS:  tensor(0.6931, dtype=torch.float64)
+122) AVG_AUC=0.49543908472479903
+EPOCH 123
+LOSS:  tensor(0.6931, dtype=torch.float64)
+123) AVG_AUC=0.49543908472479903
+EPOCH 124
+LOSS:  tensor(0.6933, dtype=torch.float64)
+124) AVG_AUC=0.49543908472479903
+EPOCH 125
+LOSS:  tensor(0.6931, dtype=torch.float64)
+125) AVG_AUC=0.49543908472479903
+EPOCH 126
+LOSS:  tensor(0.6932, dtype=torch.float64)
+126) AVG_AUC=0.49543908472479903
+EPOCH 127
+LOSS:  tensor(0.6931, dtype=torch.float64)
+127) AVG_AUC=0.49543908472479903
+EPOCH 128
+LOSS:  tensor(0.6932, dtype=torch.float64)
+128) AVG_AUC=0.49543908472479903
+EPOCH 129
+LOSS:  tensor(0.6931, dtype=torch.float64)
+129) AVG_AUC=0.49543908472479903
+EPOCH 130
+LOSS:  tensor(0.6932, dtype=torch.float64)
+130) AVG_AUC=0.49543908472479903
+EPOCH 131
+LOSS:  tensor(0.6933, dtype=torch.float64)
+131) AVG_AUC=0.49543908472479903
+EPOCH 132
+LOSS:  tensor(0.6932, dtype=torch.float64)
+132) AVG_AUC=0.49594413522984954
+100%|████████████████| 9/9 [00:00<00:00, 150.15it/s]
+100%|████████████████| 9/9 [00:00<00:00, 150.19it/s]
+100%|████████████████| 9/9 [00:00<00:00, 149.16it/s]
+100%|████████████████| 9/9 [00:00<00:00, 150.41it/s]
+100%|████████████████| 9/9 [00:00<00:00, 149.64it/s]
+100%|████████████████| 9/9 [00:00<00:00, 149.86it/s]
+100%|████████████████| 9/9 [00:00<00:00, 150.20it/s]
+100%|████████████████| 9/9 [00:00<00:00, 149.22it/s]
+100%|████████████████| 9/9 [00:00<00:00, 150.06it/s]
+100%|████████████████| 9/9 [00:00<00:00, 150.47it/s]
+100%|████████████████| 9/9 [00:00<00:00, 148.86it/s]
+100%|████████████████| 9/9 [00:00<00:00, 145.74it/s]
+100%|████████████████| 9/9 [00:00<00:00, 149.55it/s]
+100%|████████████████| 9/9 [00:00<00:00, 150.09it/s]
+100%|████████████████| 9/9 [00:00<00:00, 149.58it/s]
+100%|████████████████| 9/9 [00:00<00:00, 150.21it/s]
+100%|████████████████| 9/9 [00:00<00:00, 148.67it/s]
+  0%|                         | 0/9 [00:00<?, ?it/s]
+100%|████████████████| 9/9 [00:00<00:00, 150.15it/s]
+LOSS:  tensor(0.6932, dtype=torch.float64)
+133) AVG_AUC=0.49594413522984954
+EPOCH 134
+LOSS:  tensor(0.6933, dtype=torch.float64)
+134) AVG_AUC=0.49594413522984954
+EPOCH 135
+LOSS:  tensor(0.6931, dtype=torch.float64)
+135) AVG_AUC=0.49594413522984954
+EPOCH 136
+LOSS:  tensor(0.6932, dtype=torch.float64)
+136) AVG_AUC=0.49594413522984954
+EPOCH 137
+LOSS:  tensor(0.6931, dtype=torch.float64)
+137) AVG_AUC=0.49645433931148214
+EPOCH 138
+LOSS:  tensor(0.6932, dtype=torch.float64)
+138) AVG_AUC=0.49645433931148214
+EPOCH 139
+LOSS:  tensor(0.6931, dtype=torch.float64)
+139) AVG_AUC=0.49645433931148214
+EPOCH 140
+LOSS:  tensor(0.6931, dtype=torch.float64)
+140) AVG_AUC=0.49696454339311485
+EPOCH 141
+LOSS:  tensor(0.6933, dtype=torch.float64)
+141) AVG_AUC=0.49696454339311485
+EPOCH 142
+LOSS:  tensor(0.6932, dtype=torch.float64)
+142) AVG_AUC=0.49696454339311485
+EPOCH 143
+LOSS:  tensor(0.6931, dtype=torch.float64)
+143) AVG_AUC=0.49696454339311485
+EPOCH 144
+LOSS:  tensor(0.6931, dtype=torch.float64)
+144) AVG_AUC=0.49696454339311485
+EPOCH 145
+LOSS:  tensor(0.6932, dtype=torch.float64)
+145) AVG_AUC=0.49696454339311485
+EPOCH 146
+LOSS:  tensor(0.6931, dtype=torch.float64)
+146) AVG_AUC=0.49696454339311485
+EPOCH 147
+LOSS:  tensor(0.6931, dtype=torch.float64)
+147) AVG_AUC=0.49696454339311485
+EPOCH 148
+  File "/home/nina/miniconda3/envs/glc23/lib/python3.9/site-packages/torch/utils/data/_utils/fetch.py", line 51, in <listcomp>
+100%|████████████████| 9/9 [00:00<00:00, 133.55it/s]
+100%|████████████████| 9/9 [00:00<00:00, 149.20it/s]
+100%|████████████████| 9/9 [00:00<00:00, 148.67it/s]
+100%|████████████████| 9/9 [00:00<00:00, 148.92it/s]
+100%|████████████████| 9/9 [00:00<00:00, 144.42it/s]
+100%|████████████████| 9/9 [00:00<00:00, 148.09it/s]
+100%|████████████████| 9/9 [00:00<00:00, 149.28it/s]
+100%|████████████████| 9/9 [00:00<00:00, 149.34it/s]
+Traceback (most recent call last):
+  File "/home/nina/Documents/GeoLifeCLEF/simple_cnn.py", line 100, in <module>
+    for inputs, labels in test_loader:
+  File "/home/nina/miniconda3/envs/glc23/lib/python3.9/site-packages/torch/utils/data/dataloader.py", line 634, in __next__
+    data = self._next_data()
+  File "/home/nina/miniconda3/envs/glc23/lib/python3.9/site-packages/torch/utils/data/dataloader.py", line 678, in _next_data
+    data = self._dataset_fetcher.fetch(index)  # may raise StopIteration
+  File "/home/nina/miniconda3/envs/glc23/lib/python3.9/site-packages/torch/utils/data/_utils/fetch.py", line 51, in fetch
+    data = [self.dataset[idx] for idx in possibly_batched_index]
+  File "/home/nina/miniconda3/envs/glc23/lib/python3.9/site-packages/torch/utils/data/_utils/fetch.py", line 51, in <listcomp>
+    data = [self.dataset[idx] for idx in possibly_batched_index]
+  File "/home/nina/Documents/GeoLifeCLEF/GLC23Datasets.py", line 89, in __getitem__
+    patchid_rows_i = self.items[self.items['patchID']==item['patchID']].index
+  File "/home/nina/miniconda3/envs/glc23/lib/python3.9/site-packages/pandas/core/ops/common.py", line 72, in new_method
+    return method(self, other)
+  File "/home/nina/miniconda3/envs/glc23/lib/python3.9/site-packages/pandas/core/arraylike.py", line 42, in __eq__
+    return self._cmp_method(other, operator.eq)
+  File "/home/nina/miniconda3/envs/glc23/lib/python3.9/site-packages/pandas/core/series.py", line 6243, in _cmp_method
+    res_values = ops.comparison_op(lvalues, rvalues, op)
+  File "/home/nina/miniconda3/envs/glc23/lib/python3.9/site-packages/pandas/core/ops/array_ops.py", line 290, in comparison_op
+    res_values = _na_arithmetic_op(lvalues, rvalues, op, is_cmp=True)
+  File "/home/nina/miniconda3/envs/glc23/lib/python3.9/site-packages/pandas/core/ops/array_ops.py", line 182, in _na_arithmetic_op
+    return missing.dispatch_fill_zeros(op, left, right, result)
+KeyboardInterrupt

@@ -1,0 +1,205 @@
+{
+    "os": "Linux-5.15.0-69-generic-x86_64-with-glibc2.31",
+    "python": "3.9.16",
+    "heartbeatAt": "2023-04-24T11:31:56.620110",
+    "startedAt": "2023-04-24T11:31:56.088552",
+    "docker": null,
+    "cuda": null,
+    "args": [],
+    "state": "running",
+    "program": "/home/nina/Documents/GeoLifeCLEF/simple_cnn.py",
+    "codePath": "simple_cnn.py",
+    "git": {
+        "remote": "https://github.com/ninavantiel/GLC23.git",
+        "commit": "fdb7d36f43120c3e02048f4cda254bc797cb0238"
+    },
+    "email": "nina.vantiel@gmail.com",
+    "root": "/home/nina/Documents/GeoLifeCLEF",
+    "host": "eceo-ws14",
+    "username": "nina",
+    "executable": "/home/nina/miniconda3/envs/glc23/bin/python",
+    "cpu_count": 16,
+    "cpu_count_logical": 32,
+    "cpu_freq": {
+        "current": 3.5852187500000015,
+        "min": 2200.0,
+        "max": 3400.0
+    },
+    "cpu_freq_per_core": [
+        {
+            "current": 2.8,
+            "min": 2200.0,
+            "max": 3400.0
+        },
+        {
+            "current": 2.2,
+            "min": 2200.0,
+            "max": 3400.0
+        },
+        {
+            "current": 4.404,
+            "min": 2200.0,
+            "max": 3400.0
+        },
+        {
+            "current": 4.408,
+            "min": 2200.0,
+            "max": 3400.0
+        },
+        {
+            "current": 4.407,
+            "min": 2200.0,
+            "max": 3400.0
+        },
+        {
+            "current": 2.2,
+            "min": 2200.0,
+            "max": 3400.0
+        },
+        {
+            "current": 4.404,
+            "min": 2200.0,
+            "max": 3400.0
+        },
+        {
+            "current": 4.404,
+            "min": 2200.0,
+            "max": 3400.0
+        },
+        {
+            "current": 4.404,
+            "min": 2200.0,
+            "max": 3400.0
+        },
+        {
+            "current": 4.404,
+            "min": 2200.0,
+            "max": 3400.0
+        },
+        {
+            "current": 4.404,
+            "min": 2200.0,
+            "max": 3400.0
+        },
+        {
+            "current": 4.404,
+            "min": 2200.0,
+            "max": 3400.0
+        },
+        {
+            "current": 4.404,
+            "min": 2200.0,
+            "max": 3400.0
+        },
+        {
+            "current": 4.404,
+            "min": 2200.0,
+            "max": 3400.0
+        },
+        {
+            "current": 4.404,
+            "min": 2200.0,
+            "max": 3400.0
+        },
+        {
+            "current": 4.404,
+            "min": 2200.0,
+            "max": 3400.0
+        },
+        {
+            "current": 4.404,
+            "min": 2200.0,
+            "max": 3400.0
+        },
+        {
+            "current": 3.966,
+            "min": 2200.0,
+            "max": 3400.0
+        },
+        {
+            "current": 2.8,
+            "min": 2200.0,
+            "max": 3400.0
+        },
+        {
+            "current": 4.205,
+            "min": 2200.0,
+            "max": 3400.0
+        },
+        {
+            "current": 3.4,
+            "min": 2200.0,
+            "max": 3400.0
+        },
+        {
+            "current": 2.8,
+            "min": 2200.0,
+            "max": 3400.0
+        },
+        {
+            "current": 2.8,
+            "min": 2200.0,
+            "max": 3400.0
+        },
+        {
+            "current": 2.2,
+            "min": 2200.0,
+            "max": 3400.0
+        },
+        {
+            "current": 4.404,
+            "min": 2200.0,
+            "max": 3400.0
+        },
+        {
+            "current": 2.8,
+            "min": 2200.0,
+            "max": 3400.0
+        },
+        {
+            "current": 2.2,
+            "min": 2200.0,
+            "max": 3400.0
+        },
+        {
+            "current": 4.404,
+            "min": 2200.0,
+            "max": 3400.0
+        },
+        {
+            "current": 2.2,
+            "min": 2200.0,
+            "max": 3400.0
+        },
+        {
+            "current": 2.8,
+            "min": 2200.0,
+            "max": 3400.0
+        },
+        {
+            "current": 3.4,
+            "min": 2200.0,
+            "max": 3400.0
+        },
+        {
+            "current": 2.8,
+            "min": 2200.0,
+            "max": 3400.0
+        }
+    ],
+    "disk": {
+        "total": 472.6591796875,
+        "used": 385.86303329467773
+    },
+    "gpu": "NVIDIA GeForce RTX 3090",
+    "gpu_count": 1,
+    "gpu_devices": [
+        {
+            "name": "NVIDIA GeForce RTX 3090",
+            "memory_total": 25447170048
+        }
+    ],
+    "memory": {
+        "total": 125.71187210083008
+    }
+}
