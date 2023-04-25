@@ -2985,3 +2985,21 @@
 2023-04-25 11:48:18,354 INFO    Thread-12 :414569 [dir_watcher.py:_on_file_modified():295] file/dir modified: /home/nina/Documents/GeoLifeCLEF/wandb/run-20230425_105041-2vcd3pgm/files/output.log
 2023-04-25 11:48:19,101 DEBUG   HandlerThread:414569 [handler.py:handle_request():144] handle_request: status_report
 2023-04-25 11:48:20,357 INFO    Thread-12 :414569 [dir_watcher.py:_on_file_modified():295] file/dir modified: /home/nina/Documents/GeoLifeCLEF/wandb/run-20230425_105041-2vcd3pgm/files/output.log
+2023-04-25 11:48:22,357 INFO    Thread-12 :414569 [dir_watcher.py:_on_file_modified():295] file/dir modified: /home/nina/Documents/GeoLifeCLEF/wandb/run-20230425_105041-2vcd3pgm/files/output.log
+2023-04-25 11:48:24,359 DEBUG   HandlerThread:414569 [handler.py:handle_request():144] handle_request: status_report
+2023-04-25 11:48:24,360 INFO    Thread-12 :414569 [dir_watcher.py:_on_file_modified():295] file/dir modified: /home/nina/Documents/GeoLifeCLEF/wandb/run-20230425_105041-2vcd3pgm/files/output.log
+2023-04-25 11:48:26,362 INFO    Thread-12 :414569 [dir_watcher.py:_on_file_modified():295] file/dir modified: /home/nina/Documents/GeoLifeCLEF/wandb/run-20230425_105041-2vcd3pgm/files/output.log
+2023-04-25 11:48:28,363 INFO    Thread-12 :414569 [dir_watcher.py:_on_file_modified():295] file/dir modified: /home/nina/Documents/GeoLifeCLEF/wandb/run-20230425_105041-2vcd3pgm/files/output.log
+2023-04-25 11:48:29,447 DEBUG   HandlerThread:414569 [handler.py:handle_request():144] handle_request: status_report
+2023-04-25 11:48:29,449 DEBUG   HandlerThread:414569 [handler.py:handle_request():144] handle_request: stop_status
+2023-04-25 11:48:29,450 DEBUG   SenderThread:414569 [sender.py:send_request():402] send_request: stop_status
+2023-04-25 11:48:30,366 INFO    Thread-12 :414569 [dir_watcher.py:_on_file_modified():295] file/dir modified: /home/nina/Documents/GeoLifeCLEF/wandb/run-20230425_105041-2vcd3pgm/files/output.log
+2023-04-25 11:48:32,367 INFO    Thread-12 :414569 [dir_watcher.py:_on_file_modified():295] file/dir modified: /home/nina/Documents/GeoLifeCLEF/wandb/run-20230425_105041-2vcd3pgm/files/output.log
+2023-04-25 11:48:34,370 INFO    Thread-12 :414569 [dir_watcher.py:_on_file_modified():295] file/dir modified: /home/nina/Documents/GeoLifeCLEF/wandb/run-20230425_105041-2vcd3pgm/files/output.log
+2023-04-25 11:48:34,754 DEBUG   HandlerThread:414569 [handler.py:handle_request():144] handle_request: status_report
+2023-04-25 11:48:36,372 INFO    Thread-12 :414569 [dir_watcher.py:_on_file_modified():295] file/dir modified: /home/nina/Documents/GeoLifeCLEF/wandb/run-20230425_105041-2vcd3pgm/files/output.log
+2023-04-25 11:48:38,374 INFO    Thread-12 :414569 [dir_watcher.py:_on_file_modified():295] file/dir modified: /home/nina/Documents/GeoLifeCLEF/wandb/run-20230425_105041-2vcd3pgm/files/output.log
+2023-04-25 11:48:39,992 DEBUG   HandlerThread:414569 [handler.py:handle_request():144] handle_request: status_report
+2023-04-25 11:48:40,376 INFO    Thread-12 :414569 [dir_watcher.py:_on_file_modified():295] file/dir modified: /home/nina/Documents/GeoLifeCLEF/wandb/run-20230425_105041-2vcd3pgm/files/output.log
+2023-04-25 11:48:42,008 DEBUG   SenderThread:414569 [sender.py:send():375] send: stats
+2023-04-25 11:48:42,378 INFO    Thread-12 :414569 [dir_watcher.py:_on_file_modified():295] file/dir modified: /home/nina/Documents/GeoLifeCLEF/wandb/run-20230425_105041-2vcd3pgm/files/output.log

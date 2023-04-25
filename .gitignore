@@ -1,8 +1,4 @@
 __pycache__
-/data/EnvironmentalRasters
-/data/Presence_Absence_surveys
-/data/Presence_only_occurrences
-/data/SatelliteImages
-/data/SatelliteTimeSeries
-/data/sample_data
-/data/full_data
+/data/
+/wandb/
+/models/
