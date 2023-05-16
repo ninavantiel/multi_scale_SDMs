@@ -27,7 +27,7 @@ learning_rate = 1e-4
 n_epochs = 10
 
 # wandb run name
-run_name = '15_full_data_sampled_100'
+run_name = '15_full_data_sampled_100_less_covs'
 print(run_name)
 
 # seed random seed
@@ -39,7 +39,7 @@ if __name__ == "__main__":
     print("Making patch providers for predictor variables...")
     p_bioclim = MultipleRasterPatchProvider(data_path+'EnvironmentalRasters/Climate/BioClimatic_Average_1981-2010/') 
     # p_elevation = RasterPatchProvider(data_path + 'EnvironmentalRasters/Elevation/ASTER_Elevation.tif') 
-    p_hfp_d = MultipleRasterPatchProvider(data_path+'EnvironmentalRasters/HumanFootprint/detailed/') 
+    # p_hfp_d = MultipleRasterPatchProvider(data_path+'EnvironmentalRasters/HumanFootprint/detailed/') 
     p_hfp_s = RasterPatchProvider(data_path+'EnvironmentalRasters/HumanFootprint/summarized/HFP2009_WGS84.tif') 
     # p_rgb = JpegPatchProvider(data_path+'SatelliteImages/')#, dataset_stats='jpeg_patches_sample_stats.csv') # take all sentinel imagery layer (4)
     p_soil = MultipleRasterPatchProvider(data_path+'EnvironmentalRasters/Soilgrids/') 
@@ -50,14 +50,14 @@ if __name__ == "__main__":
     presence_only_df = pd.read_csv(presence_only_path, sep=";", header='infer', low_memory=False)
     train_data = PatchesDatasetMultiLabel(
         occurrences=presence_only_df.reset_index(), 
-        providers=(p_bioclim, p_hfp_d, p_hfp_s, p_soil, p_landcover)
+        providers=(p_bioclim, p_hfp_s, p_soil, p_landcover)
     )
     print(f"\nTRAINING DATA: n={len(train_data)}")
 
     # get number of features and number of species in train dataset
     n_features = train_data[0][0].cpu().detach().shape[0]
     print(f"Number of covariates = {n_features}")
-    n_species = len(train_data.unique_sorted_targets)
+    n_species = len(train_data.sorted_unique_targets)
     print(f"Number of species = {n_species}")
 
     # presence absence data = validation dataset
@@ -65,8 +65,8 @@ if __name__ == "__main__":
     presence_absence_df = pd.read_csv(presence_absence_path, sep=";", header='infer', low_memory=False)
     val_data = PatchesDatasetMultiLabel(
         occurrences=presence_absence_df, 
-        providers=(p_bioclim, p_hfp_d, p_hfp_s, p_soil, p_landcover),
-        ref_targets=train_data.unique_sorted_targets
+        providers=(p_bioclim, p_hfp_s, p_soil, p_landcover),
+        sorted_unique_targets=train_data.sorted_unique_targets
     )
     print(f"VALIDATION DATA: n={len(val_data)}")
 
@@ -85,7 +85,7 @@ if __name__ == "__main__":
     # loss_fn = torch.nn.BCEWithLogitsLoss(pos_weight=torch.tensor(weights)).to(dev)#(pred, target)
 
     # wandb initialization
-    run = wandb.init(project='geolifeclef23', entity="deephsm", name=run_name, resume=True, config={
+    run = wandb.init(project='geolifeclef23', name=run_name, resume='never', config={
         'epochs': n_epochs, 'batch_size': batch_size, 'lr': learning_rate, 'n_covariates': n_features, 'n_species': n_species, 'optimizer':'SGD'
     })
 
@@ -145,6 +145,9 @@ if __name__ == "__main__":
         avg_val_f1 = np.array(val_f1_list).mean()
         print(f"\tVALIDATION LOSS={avg_val_loss}, F1-SCORE={avg_val_f1} (threshold=0.5)")
 
+        # log train and val metrics for epoch
+        wandb.log({"train_loss": avg_train_loss, "val_loss": avg_val_loss, "val_f1": avg_val_f1})
+
         # model checkpoint
         torch.save({
             'epoch': epoch,
@@ -181,5 +184,3 @@ if __name__ == "__main__":
                 'val_f1': avg_val_f1
             }, f"models/{run_name}/best_val_loss.pth")  
 
-        # log train and val metrics for epoch
-        wandb.log({"train_loss": avg_train_loss, "val_loss": avg_val_loss, "val_f1": avg_val_f1})

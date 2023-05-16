@@ -23,8 +23,8 @@ class PatchesDataset(Dataset):
         target_transform=None,
         id_name="glcID",
         label_name="speciesId",
-        item_columns=['lat', 'lon', 'patchID'],
-        ref_targets=None
+        item_columns=['lat', 'lon', 'patchID']
+        # ref_targets=None
     ):
         #print("PatchesDataset __init__")
         self.occurences = occurrences#Path(occurrences)
@@ -39,10 +39,10 @@ class PatchesDataset(Dataset):
         self.items = df[item_columns]
         self.targets = df[label_name].values
         
-        if ref_targets is None:
-            self.unique_sorted_targets = np.unique(np.sort(self.targets))
-        else:
-            self.unique_sorted_targets = ref_targets
+        # if ref_targets is None:
+        #     self.unique_sorted_targets = np.unique(np.sort(self.targets))
+        # else:
+        #     self.unique_sorted_targets = ref_targets
 
     def __len__(self):
         #print("PatchesDataset __init__")
@@ -74,10 +74,14 @@ class PatchesDatasetMultiLabel(PatchesDataset):
         id_name="glcID",
         label_name="speciesId",
         item_columns=['lat', 'lon', 'patchID'],
-        ref_targets=None
+        sorted_unique_targets=None
     ):
         #print("PatchesDatasetMultiLabel __init__")
-        super().__init__(occurrences, providers, transform, target_transform, id_name, label_name, item_columns, ref_targets)
+        super().__init__(occurrences, providers, transform, target_transform, id_name, label_name, item_columns)
+        if sorted_unique_targets is None:
+            self.sorted_unique_targets = np.unique(np.sort(self.targets))
+        else:
+            self.sorted_unique_targets = sorted_unique_targets
 
     def __getitem__(self, index):
         # print(f"PatchesDatasetMultiLabel __getitem__ index={index}")
@@ -86,12 +90,12 @@ class PatchesDatasetMultiLabel(PatchesDataset):
         # self.targets_sorted = np.sort(self.targets)
 
         patch = self.provider[item]
-        item_targets = np.zeros(len(self.unique_sorted_targets))
+        item_targets = np.zeros(len(self.sorted_unique_targets))
         for idx in patchid_rows_i:
             target = self.targets[idx]
             if self.target_transform:
                 target = self.target_transform(target)
-            item_targets[np.where(self.unique_sorted_targets==target)] = 1
+            item_targets[np.where(self.sorted_unique_targets==target)] = 1
 
         # print(index, len(item_targets), item_targets.sum(), item_targets[np.where(item_targets!=0)])
         item_targets = torch.from_numpy(item_targets)
