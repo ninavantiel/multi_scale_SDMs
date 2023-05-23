@@ -22,16 +22,18 @@ print(dev)
 
 # path to data
 data_path = 'data/full_data/'
-presence_only_path = data_path+'Presence_only_occurrences/Presences_only_train_sampled_100.csv'
+presence_only_path = data_path+'Presence_only_occurrences/Presences_only_train_2k_species.csv'
 presence_absence_path = data_path+'Presence_Absence_surveys/Presences_Absences_train.csv' # Presences_Absences_train_sampled.csv
 
 # hyperparameters
 batch_size = 64
-learning_rate = 1e-4
+learning_rate = 1e-2
 patch_size = 20
 
 # wandb run name
-run_name = '19_sampled_data_patch_size_20'
+# run_name = '19_2kspecies_patch20'
+# run_name = '22_2kspecies_lr1e-2'
+run_name = '22_2kspecies_lr1e-2_weights_mult_10'
 print(run_name)
 
 # seed random seed
@@ -39,7 +41,7 @@ seed = 42
 seed_everything(seed)
 
 # thresholds to test
-thresholds = np.arange(0.2, 0.7, 0.05)
+thresholds = np.arange(0, 1, 0.1)
 
 if __name__ == "__main__":
     # load patch providers for covariates
@@ -81,7 +83,7 @@ if __name__ == "__main__":
     val_loader = torch.utils.data.DataLoader(val_data, shuffle=False, batch_size=batch_size, num_workers=16)
 
     # model
-    model = cnn_batchnorm_patchsize_20(n_features, n_species).to(dev) 
+    model = cnn_batchnorm_patchsize_20(n_features, n_species).to(dev)
     optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)#, momentum=0.9)
 
     # load best model
@@ -109,11 +111,8 @@ if __name__ == "__main__":
         y_pred_list = []
         y_true_list = []
         for inputs, labels in tqdm(val_loader):
-            print('input shape', inputs.shape)
             y_true_list.append(labels)
             batch_y_pred = model(inputs.to(dev))
-            print(batch_y_pred.shape)
-            print(labels.shape)
             y_pred_list.append(batch_y_pred.cpu().detach().numpy())
 
         y_pred = np.concatenate(y_pred_list)

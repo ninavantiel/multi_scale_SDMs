@@ -9,7 +9,7 @@ import wandb
 
 from GLC23PatchesProviders import MultipleRasterPatchProvider, RasterPatchProvider, JpegPatchProvider
 from GLC23Datasets import PatchesDataset, PatchesDatasetMultiLabel
-from models import cnn, cnn2
+from models import cnn, cnn_batchnorm, cnn_batchnorm_act
 from util import seed_everything
 
 # device (cpu ou cuda)
@@ -24,10 +24,11 @@ presence_absence_path = data_path+'Presence_Absence_surveys/Presences_Absences_t
 # hyperparameters
 batch_size = 64
 learning_rate = 1e-4
-n_epochs = 10
+n_epochs = 20
 
 # wandb run name
-run_name = '15_full_data_sampled_100_less_covs'
+run_name = '17_bceloss_again'
+
 print(run_name)
 
 # seed random seed
@@ -75,19 +76,20 @@ if __name__ == "__main__":
     val_loader = torch.utils.data.DataLoader(val_data, shuffle=False, batch_size=batch_size, num_workers=8)
 
     # model and optimizer
-    model = cnn(n_features, n_species).to(dev)
+    model = cnn_batchnorm_act(n_features, n_species).to(dev)
     optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)#, momentum=0.9)
 
     # loss function
-    loss_fn = torch.nn.BCEWithLogitsLoss()
+    loss_fn = torch.nn.BCELoss().to(dev)
     # weights = torch.tensor(((len(train_data) - presence_only_df.groupby('speciesId').glcID.count()) / 
                             # (presence_only_df.groupby('speciesId').glcID.count()+ 1e-3)).values)
     # loss_fn = torch.nn.BCEWithLogitsLoss(pos_weight=torch.tensor(weights)).to(dev)#(pred, target)
 
     # wandb initialization
-    run = wandb.init(project='geolifeclef23', name=run_name, resume='never', config={
-        'epochs': n_epochs, 'batch_size': batch_size, 'lr': learning_rate, 'n_covariates': n_features, 'n_species': n_species, 'optimizer':'SGD'
-    })
+    # run = wandb.init(project='geolifeclef23', name=run_name, resume='never', config={
+    #     'epochs': n_epochs, 'batch_size': batch_size, 'lr': learning_rate, 'n_covariates': n_features, 'n_species': n_species, 
+    #     'optimizer':'SGD', 'model': 'cnn_batchnorm_act', 'loss': 'BCELoss'
+    # })
 
     # get checkpoint of model if a model has been saved
     if not os.path.exists(f"models/{run_name}"): 
@@ -110,14 +112,20 @@ if __name__ == "__main__":
         model.train()
         train_loss_list = []
         for inputs, labels in tqdm(train_loader):
-            inputs = inputs.to(dev)
-            labels = labels.to(dev)
+
+            inputs = inputs.to(torch.float32).to(dev)
+            labels = labels.to(torch.float32).to(dev) 
             # forward pass
             y_pred = model(inputs)
+            print('y_pred shape', y_pred.shape, y_pred[0,0:10])
+            print('labels shape', labels.shape, labels[0,0:10])
             loss = loss_fn(y_pred, labels)
+            print('loss done')
             # backward pass and weight update
             optimizer.zero_grad()
+            print('optimizer zero grad sdone')
             loss.backward()
+            print('loss backward done')
             optimizer.step()
 
             train_loss_list.append(loss.cpu().detach())
@@ -128,14 +136,14 @@ if __name__ == "__main__":
         model.eval()
         val_loss_list, val_f1_list = [], []
         for inputs, labels in tqdm(val_loader):
-            inputs = inputs.to(dev)
-            y_true = labels.to(dev)
+            inputs = inputs.to(torch.float32).to(dev)
+            labels = labels.to(dev) #.to(torch.float32)
             y_pred = model(inputs)
             # validation loss
-            val_loss = loss_fn(y_pred, y_true).cpu().detach()
+            val_loss = loss_fn(y_pred, labels).cpu().detach()
             val_loss_list.append(val_loss)
 
-            y_true = y_true.cpu().detach().numpy()
+            y_true = labels.cpu().detach().numpy()
             y_pred =  y_pred.cpu().detach().numpy()
             y_bin = np.where(y_pred > 0.5, 1, 0)
             f1 = f1_score(y_true, y_bin, average='macro', zero_division=0)

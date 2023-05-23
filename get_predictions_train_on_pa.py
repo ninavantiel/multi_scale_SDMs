@@ -22,16 +22,18 @@ print(dev)
 
 # path to data
 data_path = 'data/full_data/'
-presence_only_path = data_path+'Presence_only_occurrences/Presences_only_train_sampled_100.csv'
+presence_only_path = data_path+'Presence_only_occurrences/Presences_only_train_2k_species.csv'
 presence_absence_path = data_path+'Presence_Absence_surveys/Presences_Absences_train.csv' # Presences_Absences_train_sampled.csv
 
 # hyperparameters
 batch_size = 64
-learning_rate = 1e-4
+learning_rate = 1e-3
 patch_size = 20
+val_frac = 0.2
 
 # wandb run name
-run_name = '19_sampled_data_patch_size_20'
+# run_name = '22_train_on_pa'
+run_name = '23_train_on_pa_with_val'
 print(run_name)
 
 # seed random seed
@@ -39,7 +41,7 @@ seed = 42
 seed_everything(seed)
 
 # thresholds to test
-thresholds = np.arange(0.2, 0.7, 0.05)
+thresholds = np.arange(0.5, 1, 0.05)
 
 if __name__ == "__main__":
     # load patch providers for covariates
@@ -52,14 +54,29 @@ if __name__ == "__main__":
     p_soil = MultipleRasterPatchProvider(data_path+'EnvironmentalRasters/Soilgrids/', size=patch_size, normalize=True)
     p_landcover = RasterPatchProvider(data_path+'EnvironmentalRasters/LandCover/LandCover_MODIS_Terra-Aqua_500m.tif', size=patch_size, normalize=True)
     
-    # presence only data = train dataset
-    print("Making dataset for presence-only training data...")
-    presence_only_df = pd.read_csv(presence_only_path, sep=";", header='infer', low_memory=False)
+    # split presence absence data into validation and training set
+    # patches are sorted by lat/lon and then the first n_val are chosen 
+    # --> train and val set are geographically separated
+    presence_absence_df = pd.read_csv(presence_absence_path, sep=";", header='infer', low_memory=False)
+    sorted_patches = presence_absence_df.drop_duplicates(['patchID','dayOfYear']).sort_values(['lat','lon'])
+    
+    n_val = round(sorted_patches.shape[0] * val_frac)
+    val_patches = sorted_patches.iloc[0:n_val] 
+    val_presence_absence = presence_absence_df[(presence_absence_df['patchID'].isin(val_patches['patchID'])) & 
+                             (presence_absence_df['dayOfYear'].isin(val_patches['dayOfYear']))].reset_index(drop=True)
+    print(f"Validation set: {n_val} patches -> {val_presence_absence.shape[0]} observations")
+    train_patches = sorted_patches.iloc[n_val:]
+    train_presence_absence = presence_absence_df[(presence_absence_df['patchID'].isin(train_patches['patchID'])) & 
+                             (presence_absence_df['dayOfYear'].isin(train_patches['dayOfYear']))].reset_index(drop=True)
+    print(f"Validation set: {train_patches.shape[0]} patches -> {train_presence_absence.shape[0]} observations")
+
+    print("Making dataset for presence-absence trainig data...")
     train_data = PatchesDatasetMultiLabel(
-        occurrences=presence_only_df.reset_index(), 
+        occurrences=train_presence_absence, 
         providers=(p_bioclim, p_hfp_s, p_soil, p_landcover)
+        # sorted_unique_targets=train_data.sorted_unique_targets
     )
-    print(f"\nTRAINING DATA: n={len(train_data)}")
+    print(f"TRAIN DATA: n={len(train_data)}")
 
     # get number of features and number of species in train dataset
     n_features = train_data[0][0].cpu().detach().shape[0]
@@ -67,21 +84,19 @@ if __name__ == "__main__":
     n_species = len(train_data.sorted_unique_targets)
     print(f"Number of species = {n_species}")
 
-    # presence absence data = validation dataset
     print("Making dataset for presence-absence validation data...")
-    presence_absence_df = pd.read_csv(presence_absence_path, sep=";", header='infer', low_memory=False)
     val_data = PatchesDatasetMultiLabel(
-        occurrences=presence_absence_df, 
+        occurrences=val_presence_absence, 
         providers=(p_bioclim, p_hfp_s, p_soil, p_landcover),
         sorted_unique_targets=train_data.sorted_unique_targets
     )
     print(f"VALIDATION DATA: n={len(val_data)}")
 
     # data loaders
-    val_loader = torch.utils.data.DataLoader(val_data, shuffle=False, batch_size=batch_size, num_workers=16)
+    val_loader = torch.utils.data.DataLoader(val_data, shuffle=False, batch_size=batch_size, num_workers=8)
 
     # model
-    model = cnn_batchnorm_patchsize_20(n_features, n_species).to(dev) 
+    model = cnn_batchnorm_patchsize_20(n_features, n_species).to(dev)
     optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)#, momentum=0.9)
 
     # load best model
@@ -109,11 +124,8 @@ if __name__ == "__main__":
         y_pred_list = []
         y_true_list = []
         for inputs, labels in tqdm(val_loader):
-            print('input shape', inputs.shape)
             y_true_list.append(labels)
             batch_y_pred = model(inputs.to(dev))
-            print(batch_y_pred.shape)
-            print(labels.shape)
             y_pred_list.append(batch_y_pred.cpu().detach().numpy())
 
         y_pred = np.concatenate(y_pred_list)

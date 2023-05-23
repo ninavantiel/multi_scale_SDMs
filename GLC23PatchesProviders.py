@@ -19,7 +19,7 @@ import rasterio
 from PIL import Image
 import pandas as pd
 
-# from data.get_jpeg_patches_mean_std import standardize as jpeg_standardize
+from data.get_jpeg_patches_mean_std import standardize as jpeg_standardize
 
 
 class PatchProvider(object):
@@ -274,6 +274,7 @@ class JpegPatchProvider(PatchProvider):
         self.channels = [c.lower() for c in select]
         self.nb_layers = len(self.channels)
         self.bands_names = self.channels
+        self.size = size
 
     def __getitem__(self, item):
         """Return a tensor composed of every channels of a jpeg patch.
@@ -328,6 +329,12 @@ class JpegPatchProvider(PatchProvider):
                         mean, std = jpeg_standardize(self.root_path, [self.ext], output=self.dataset_stats)
                     img = (img-mean)/std
                 for depth in img:
+                    if self.size < 128:
+                        xmin=round((depth.shape[0] - self.size) /2)
+                        xmax=round((depth.shape[0] + self.size) /2)
+                        ymin=round((depth.shape[1] - self.size) /2)
+                        ymax=round((depth.shape[1] + self.size) /2)
+                        depth = depth[xmin:xmax, ymin:ymax]
                     list_tensor['tensors'].append(np.expand_dims(depth, axis=0))
         tensor = np.concatenate(list_tensor['tensors'])
         if self.patch_transform:
