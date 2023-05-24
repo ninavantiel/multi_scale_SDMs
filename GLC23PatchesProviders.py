@@ -173,8 +173,8 @@ class RasterPatchProvider(PatchProvider):
             lat = lat + ((random()*2*self.spatial_noise)-self.spatial_noise)
 
         # calculate the x, y coordinate of the point of interest
-        x = int(self.n_rows - (lat - self.y_min) / self.y_resolution)
-        y = int((lon - self.x_min) / self.x_resolution)
+        x = int((lon - self.x_min) / self.x_resolution)
+        y = int(self.n_rows - (lat - self.y_min) / self.y_resolution)
 
         # read the data of the patch from all layers
         if self.patch_size == 1:
@@ -191,7 +191,6 @@ class RasterPatchProvider(PatchProvider):
         return tensor
     
     def __str__(self):
-        #print("RasterPatchProvider __str__")
         result = '-' * 50 + '\n'
         result += 'n_layers: ' + str(self.nb_layers) + '\n'
         result += 'x_min: ' + str(self.x_min) + '\n'
@@ -205,7 +204,6 @@ class RasterPatchProvider(PatchProvider):
 
 class MultipleRasterPatchProvider(PatchProvider):
     def __init__(self, rasters_folder, select=None, size=128, spatial_noise=0, normalize=True, fill_zero_if_error=False):
-        #print("MultipleRasterPatchProvider __init__")
 
         files = os.listdir(rasters_folder)
         # Filter files to include only those with .tif extension
@@ -308,7 +306,8 @@ class JpegPatchProvider(PatchProvider):
             if channel not in list_tensor['order']:
                 path = os.path.join(self.root_path, self.channel_folder[channel], sub_folder_1, sub_folder_2, id_+self.ext)
                 try:
-                    img = np.asarray(Image.open(path))
+                    img = np.asarray(Image.open(path)) 
+                    if self.normalize: img = img / 255.0
                     if set(['red','green','blue']).issubset(self.channels) and channel in ['red','green','blue']:
                         img = img.transpose((2,0,1))
                         list_tensor['order'].extend(['red','green','blue'])
@@ -321,13 +320,13 @@ class JpegPatchProvider(PatchProvider):
                     logging.critical('Could not open {} properly. Setting array to 0.'.format(path))
                     img = np.zeros((1, self.patch_size, self.patch_size))
                     list_tensor['order'].append(channel)
-                if self.normalize:
-                    if os.path.isfile(self.dataset_stats):
-                        df = pd.read_csv(self.dataset_stats, sep=';')
-                        mean, std = df.loc[0, 'mean'], df.loc[0, 'std']
-                    else:
-                        mean, std = jpeg_standardize(self.root_path, [self.ext], output=self.dataset_stats)
-                    img = (img-mean)/std
+                # if self.normalize:
+                #     if os.path.isfile(self.dataset_stats):
+                #         df = pd.read_csv(self.dataset_stats, sep=';')
+                #         mean, std = df.loc[0, 'mean'], df.loc[0, 'std']
+                #     else:
+                #         mean, std = jpeg_standardize(self.root_path, [self.ext], output=self.dataset_stats)
+                #     img = (img-mean)/std
                 for depth in img:
                     if self.size < 128:
                         xmin=round((depth.shape[0] - self.size) /2)

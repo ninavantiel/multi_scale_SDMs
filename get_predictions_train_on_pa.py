@@ -8,7 +8,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import roc_auc_score, f1_score
 import wandb
 
-from GLC23PatchesProviders import MultipleRasterPatchProvider, RasterPatchProvider#, JpegPatchProvider
+from GLC23PatchesProviders import MultipleRasterPatchProvider, RasterPatchProvider, JpegPatchProvider
 from GLC23Datasets import PatchesDataset, PatchesDatasetMultiLabel
 from models import cnn, cnn_batchnorm, cnn_batchnorm_patchsize_20
 from util import seed_everything
@@ -30,10 +30,18 @@ batch_size = 64
 learning_rate = 1e-3
 patch_size = 20
 val_frac = 0.2
+dropout = 0.3
 
 # wandb run name
-# run_name = '22_train_on_pa'
-run_name = '23_train_on_pa_with_val'
+# run_name = '24_train_on_pa_env_unweighted'
+# ### SCREEN = model_train_on_pa -> F1=0.05278, threshold=0.2
+
+run_name = '24_train_on_pa_env_rgnir_unweighted'
+# ### SCREEN = train_on_pa_env_rgb_unweighted 
+#     -> F1=0.0555, threshold=0.2
+
+# run_name = '24_train_on_pa_env_unweighted_2'
+# ### SCREEN = train_on_pa_env_unweighted -> F1=0.0587, threshold=0.2
 print(run_name)
 
 # seed random seed
@@ -41,7 +49,7 @@ seed = 42
 seed_everything(seed)
 
 # thresholds to test
-thresholds = np.arange(0.5, 1, 0.05)
+thresholds = np.arange(0, 5, 0.05)
 
 if __name__ == "__main__":
     # load patch providers for covariates
@@ -50,7 +58,7 @@ if __name__ == "__main__":
     # p_elevation = RasterPatchProvider(data_path + 'EnvironmentalRasters/Elevation/ASTER_Elevation.tif') 
     # p_hfp_d = MultipleRasterPatchProvider(data_path+'EnvironmentalRasters/HumanFootprint/detailed/') 
     p_hfp_s = RasterPatchProvider(data_path+'EnvironmentalRasters/HumanFootprint/summarized/HFP2009_WGS84.tif', size=patch_size, normalize=True)
-    # p_rgb = JpegPatchProvider(data_path+'SatelliteImages/', size=patch_size)#, dataset_stats='jpeg_patches_sample_stats.csv') # take all sentinel imagery layer (4)
+    p_rgb = JpegPatchProvider(data_path+'SatelliteImages/', size=patch_size, normalize=True)#, dataset_stats='jpeg_patches_sample_stats.csv') # take all sentinel imagery layer (4)
     p_soil = MultipleRasterPatchProvider(data_path+'EnvironmentalRasters/Soilgrids/', size=patch_size, normalize=True)
     p_landcover = RasterPatchProvider(data_path+'EnvironmentalRasters/LandCover/LandCover_MODIS_Terra-Aqua_500m.tif', size=patch_size, normalize=True)
     
@@ -73,7 +81,7 @@ if __name__ == "__main__":
     print("Making dataset for presence-absence trainig data...")
     train_data = PatchesDatasetMultiLabel(
         occurrences=train_presence_absence, 
-        providers=(p_bioclim, p_hfp_s, p_soil, p_landcover)
+        providers=(p_bioclim, p_hfp_s, p_soil, p_landcover, p_rgb)
         # sorted_unique_targets=train_data.sorted_unique_targets
     )
     print(f"TRAIN DATA: n={len(train_data)}")
@@ -87,7 +95,7 @@ if __name__ == "__main__":
     print("Making dataset for presence-absence validation data...")
     val_data = PatchesDatasetMultiLabel(
         occurrences=val_presence_absence, 
-        providers=(p_bioclim, p_hfp_s, p_soil, p_landcover),
+        providers=(p_bioclim, p_hfp_s, p_soil, p_landcover, p_rgb),
         sorted_unique_targets=train_data.sorted_unique_targets
     )
     print(f"VALIDATION DATA: n={len(val_data)}")
@@ -96,12 +104,12 @@ if __name__ == "__main__":
     val_loader = torch.utils.data.DataLoader(val_data, shuffle=False, batch_size=batch_size, num_workers=8)
 
     # model
-    model = cnn_batchnorm_patchsize_20(n_features, n_species).to(dev)
+    model = cnn_batchnorm_patchsize_20(n_features, n_species, dropout).to(dev)
     optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)#, momentum=0.9)
 
     # load best model
     print("\nLoading best train loss model checkpoint...")
-    checkpoint = torch.load(f"models/{run_name}/best_train_loss.pth")
+    checkpoint = torch.load(f"models/{run_name}/last.pth")#best_train_loss.pth")
     model.load_state_dict(checkpoint['state_dict'])
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
     epoch = checkpoint['epoch']
@@ -125,7 +133,7 @@ if __name__ == "__main__":
         y_true_list = []
         for inputs, labels in tqdm(val_loader):
             y_true_list.append(labels)
-            batch_y_pred = model(inputs.to(dev))
+            batch_y_pred = torch.sigmoid(model(inputs.to(dev)))
             y_pred_list.append(batch_y_pred.cpu().detach().numpy())
 
         y_pred = np.concatenate(y_pred_list)
@@ -138,7 +146,8 @@ if __name__ == "__main__":
     f1_scores = []
     for thresh in tqdm(thresholds):
         y_bin = np.where(y_pred > thresh, 1, 0)
-        f1_scores.append(np.array([f1_score(y_true[i,:], y_bin[i,:]) for i in range(y_true.shape[0])]).mean())
+        f1_scores.append(f1_score(y_true.T, y_bin.T, average='macro', zero_division=0))
+        # f1_scores.append(np.array([f1_score(y_true[i,:], y_bin[i,:], zero_division=0) for i in range(y_true.shape[0])]).mean())
     best_threshold = thresholds[np.argmax(f1_scores)]
     best_f1 = np.max(f1_scores)      
     print(f"Thresholds: {thresholds}\nF1-scores: {f1_scores}")
@@ -150,7 +159,7 @@ if __name__ == "__main__":
         occurrences=submission,
         id_name='Id',
         label_name='Id',
-        providers=(p_bioclim, p_hfp_s, p_soil, p_landcover)
+        providers=(p_bioclim, p_hfp_s, p_soil, p_landcover, p_rgb)
         # sorted_unique_targets=train_data.sorted_unique_targets
     )   
     print(f"SUBMISSION DATA: {len(submission_data)}")
@@ -160,7 +169,7 @@ if __name__ == "__main__":
     y_pred_list = []
     for inputs, labels in tqdm(submission_loader):
         inputs = inputs.to(dev)
-        batch_y_pred = model(inputs)
+        batch_y_pred = torch.sigmoid(model(inputs))
         y_pred_list.append(batch_y_pred.cpu().detach().numpy())
 
     targets = train_data.sorted_unique_targets

@@ -31,7 +31,7 @@ patch_size = 20
 
 # wandb run name
 # run_name = '19_2kspecies_patch20'
-run_name = '22_2kspecies_lr1e-2_weights_mult_10'
+run_name = '24_2kspecies_lr1e-2_weights_mult_10_patchprovidercorr'
 print(run_name)
 
 # seed random seed
@@ -64,6 +64,12 @@ if __name__ == "__main__":
     n_species = len(train_data.sorted_unique_targets)
     print(f"Number of species = {n_species}")
 
+    print(train_data[0][0].shape)
+    print(train_data[0][1].shape)
+
+    print(train_data[3][0].shape)
+    print(train_data[3][1].shape)
+
     # presence absence data = validation dataset
     print("Making dataset for presence-absence validation data...")
     presence_absence_df = pd.read_csv(presence_absence_path, sep=";", header='infer', low_memory=False)
@@ -86,7 +92,7 @@ if __name__ == "__main__":
     # loss_fn = torch.nn.BCEWithLogitsLoss() 
     weights = torch.tensor(((len(train_data) - presence_only_df.groupby('speciesId').glcID.count()) / 
                             (presence_only_df.groupby('speciesId').glcID.count()+ 1e-3)).values * 10)
-    loss_fn = torch.nn.BCEWithLogitsLoss(pos_weight=torch.tensor(weights)).to(dev)#(pred, target)
+    loss_fn = torch.nn.BCEWithLogitsLoss(pos_weight=weights).to(dev)#(pred, target)
 
     # wandb initialization
     run = wandb.init(project='geolifeclef23', name=run_name, resume='never', config={

@@ -25,15 +25,21 @@ presence_absence_path = data_path+'Presence_Absence_surveys/Presences_Absences_t
 # hyperparameters
 batch_size = 64
 learning_rate = 1e-3
-n_epochs = 100
+n_epochs = 200
 bin_thresh = 0.1
 patch_size = 20
 val_frac = 0.2
+dropout = 0.5
 
 # wandb run name
 # run_name = '19_2kspecies_patch20'
 # run_name = '23_train_on_pa_with_val'
-run_name = '23_train_on_pa_with_val_rgb_notnorm'
+# run_name = '23_train_on_pa_with_val_rgb_notnorm'
+# run_name = '24_train_on_pa_with_val_corrected_raster_provider_lr1e-4'
+# run_name = '24_train_on_pa_with_val_corrected_raster_provider_lr1e-3_rgb_minmax_norm_diff_model'
+# run_name = '24_train_on_pa_rgbnir_norm_dropout_03_xy_inversed'
+run_name = '24_train_on_pa_env_unweighted_2'
+# run_name = '24_train_on_pa_env_rgnir_unweighted'
 print(run_name)
 
 # seed random seed
@@ -47,7 +53,7 @@ if __name__ == "__main__":
     # p_elevation = RasterPatchProvider(data_path + 'EnvironmentalRasters/Elevation/ASTER_Elevation.tif') 
     # p_hfp_d = MultipleRasterPatchProvider(data_path+'EnvironmentalRasters/HumanFootprint/detailed/') 
     p_hfp_s = RasterPatchProvider(data_path+'EnvironmentalRasters/HumanFootprint/summarized/HFP2009_WGS84.tif', size=patch_size, normalize=True)
-    p_rgb = JpegPatchProvider(data_path+'SatelliteImages/', size=patch_size, normalize=False)
+    p_rgb = JpegPatchProvider(data_path+'SatelliteImages/', size=patch_size, normalize=True)
     p_soil = MultipleRasterPatchProvider(data_path+'EnvironmentalRasters/Soilgrids/', size=patch_size, normalize=True)
     p_landcover = RasterPatchProvider(data_path+'EnvironmentalRasters/LandCover/LandCover_MODIS_Terra-Aqua_500m.tif', size=patch_size, normalize=True)
 
@@ -70,7 +76,7 @@ if __name__ == "__main__":
     print("Making dataset for presence-absence trainig data...")
     train_data = PatchesDatasetMultiLabel(
         occurrences=train_presence_absence, 
-        providers=(p_bioclim, p_hfp_s, p_soil, p_landcover, p_rgb)
+        providers=(p_bioclim, p_hfp_s, p_soil, p_landcover)
         # sorted_unique_targets=train_data.sorted_unique_targets
     )
     print(f"TRAIN DATA: n={len(train_data)}")
@@ -84,7 +90,7 @@ if __name__ == "__main__":
     print("Making dataset for presence-absence validation data...")
     val_data = PatchesDatasetMultiLabel(
         occurrences=val_presence_absence, 
-        providers=(p_bioclim, p_hfp_s, p_soil, p_landcover, p_rgb),
+        providers=(p_bioclim, p_hfp_s, p_soil, p_landcover),
         sorted_unique_targets=train_data.sorted_unique_targets
     )
     print(f"VALIDATION DATA: n={len(val_data)}")
@@ -94,22 +100,22 @@ if __name__ == "__main__":
     val_loader = torch.utils.data.DataLoader(val_data, shuffle=False, batch_size=batch_size, num_workers=8)
 
     # model and optimizer
-    model = cnn_batchnorm_patchsize_20(n_features, n_species).to(dev)
+    model = cnn_batchnorm_patchsize_20(n_features, n_species, dropout).to(dev)
     optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)#, momentum=0.9)
 
     # # loss function
-    # # loss_fn = torch.nn.BCEWithLogitsLoss() 
-    weights = torch.tensor(((len(train_data) - train_presence_absence.groupby('speciesId').glcID.count()) / 
-                            (train_presence_absence.groupby('speciesId').glcID.count()+ 1e-3)).values)
-    print(len(train_data))
-    print(train_presence_absence.groupby('speciesId').glcID.count()[0:10])
-    print(weights[0:10])
-    loss_fn = torch.nn.BCEWithLogitsLoss(pos_weight=weights).to(dev)
+    loss_fn = torch.nn.BCEWithLogitsLoss() 
+    # weights = torch.tensor(((len(train_data) - train_presence_absence.groupby('speciesId').glcID.count()) / 
+    #                         (train_presence_absence.groupby('speciesId').glcID.count()+ 1e-3)).values)
+    # print(len(train_data))
+    # print(train_presence_absence.groupby('speciesId').glcID.count()[0:10])
+    # print(weights[0:10])
+    # loss_fn = torch.nn.BCEWithLogitsLoss(pos_weight=weights).to(dev)
 
     # wandb initialization
     run = wandb.init(project='geolifeclef23', name=run_name, resume='never', config={
-        'epochs': n_epochs, 'batch_size': batch_size, 'lr': learning_rate, 'n_covariates': n_features, 'n_species': n_species, 
-        'optimizer':'SGD', 'model': 'cnn_batchnorm', 'loss': 'BCEWithLogitsLoss', 'patch_size': patch_size, 'train_data': 'PA'
+        'epochs': n_epochs, 'batch_size': batch_size, 'lr': learning_rate, 'dropout': dropout, 'n_covariates': n_features, 'n_species': n_species, 
+        'optimizer':'SGD', 'model': 'cnn_batchnorm_patchsize_20', 'loss': 'BCEWithLogitsLoss', 'patch_size': patch_size, 'train_data': 'PA'
     })
 
     # get checkpoint of model if a model has been saved

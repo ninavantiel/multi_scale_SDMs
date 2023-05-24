@@ -10,6 +10,9 @@ import numpy as np
 import pandas as pd
 import torch
 from torch.utils.data import Dataset
+from PIL import Image
+import os
+import rasterio
 
 from GLC23PatchesProviders import MetaPatchProvider
 from GLC23TimeSeriesProviders import MetaTimeSeriesProvider
@@ -216,5 +219,93 @@ class TabularDataset(Dataset):
         item_targets = 1* np.isin(self.sorted_unique_targets, labels)
 
         return item_env, item_targets
+    
+class RGBNIR_env_Dataset(Dataset):
+    def __init__(
+            self,
+            occurrences,
+            species=None,
+            sites_columns=['patchID','dayOfYear','lat','lon'],
+            env_dirs=[
+                "data/full_data/EnvironmentalRasters/Climate/BioClimatic_Average_1981-2010/", 
+                "data/full_data/EnvironmentalRasters/HumanFootprint/summarized/"
+            ],
+            label_col='speciesId',
+            rgbnir_dir="data/full_data/SatelliteImages/",
+            env_patch_size=128,
+            rgbnir_patch_size=128
+    ):
+        
+        # occurrences
+        self.occurrences = occurrences
+        self.sites = occurrences[sites_columns].drop_duplicates().reset_index(drop=True)
+        self.label_col = label_col
+        if species is None: 
+            self.species = occurrences['speciesId'].sort_values().unique()
+        else: 
+            self.species = species
 
+        # satellite images rgbnir
+        self.rgbnir_dir = rgbnir_dir
+        self.rgbnir_patch_size = rgbnir_patch_size
 
+        # environmental covariates 
+        self.env_dirs = env_dirs
+        self.env_patch_size = env_patch_size
+        self.env_stats = {}
+        for dir in env_dirs:
+            for file in os.listdir(dir):
+                if ".tif" not in file: continue
+                with rasterio.open(dir + file) as src:
+                    n = src.count
+                    assert n == 1, f"number of layers should be 1, for {dir+file} got {n}"
+                    nodata_value = src.nodatavals[0]
+                    data = src.read().astype(float)
+                    data = np.where(data == nodata_value, np.nan, data)
+                    self.env_stats[dir + file] = {
+                        'mean': np.nanmean(data), 
+                        'std': np.nanstd(data), 
+                        'min': np.nanmin(data), 
+                        'max': np.nanmax(data), 
+                        'nodata_value': nodata_value
+                    }
+
+    def __getitem__(self, index):
+        item = self.sites.iloc[index].to_dict()
+        item_species = self.occurrences[
+            (self.occurrences['patchID'] == item['patchID']) & (self.occurrences['dayOfYear'] == item['dayOfYear'])
+        ][self.label_col].values
+        labels = 1 * np.isin(self.species, item_species)
+
+        # satellite images rgbnir
+        patch_id = str(int(item['patchID']))
+        rgb_path = f"{self.rgbnir_dir}rgb/{patch_id[-2:]}/{patch_id[-4:-2]}/{patch_id}.jpeg"
+        rgb_img = (np.asarray(Image.open(rgb_path)) / 255.0).transpose((2,0,1))
+
+        nir_path = f"{self.rgbnir_dir}nir/{patch_id[-2:]}/{patch_id[-4:-2]}/{patch_id}.jpeg"
+        nir_img = np.expand_dims(np.asarray(Image.open(nir_path)) / 255.0, axis=0)
+
+        rgbnir = np.concatenate([rgb_img, nir_img])
+        if self.rgbnir_patch_size != 128:
+            rgbnir = rgbnir[:, round((rgbnir[0].shape[0] - self.rgbnir_patch_size) /2):round((rgbnir[0].shape[0] + self.rgbnir_patch_size) /2),
+                                    round((rgbnir[0].shape[1] - self.rgbnir_patch_size) /2):round((rgbnir[0].shape[1] + self.rgbnir_patch_size) /2)]
+            
+        # environmental covariates 
+        patch_list = []
+        for rasterpath, stats in self.env_stats.items():
+            with rasterio.open(rasterpath) as src:
+                center_x, center_y = src.index(item['lon'], item['lat'])
+                left = center_x - (self.env_patch_size // 2)
+                top = center_y - (self.env_patch_size // 2)
+                patch = src.read(window=rasterio.windows.Window(left, top, self.env_patch_size, self.env_patch_size)).astype(float)
+                # patch = (patch - stats['mean']) / stats['std'] # standard scaling
+                patch = (patch - stats['min']) / (stats['max'] - stats['min']) # min max scaling
+                patch = np.where(patch == stats['nodata_value'], np.nan, patch)
+                patch_list.append(patch)
+
+        env_covs = np.concatenate(patch_list)
+
+        return rgbnir, env_covs, labels
+
+    def __len__(self):
+        return self.sites.shape[0]
