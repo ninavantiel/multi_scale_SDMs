@@ -1,9 +1,0 @@
-Number of covariates = 6
-Number of species = 96
-TRAINING DATA: n=80
-VALIDATION DATA: n=20
-VALIDATION: n=100
-Traceback (most recent call last):
-  File "/home/nina/Documents/GeoLifeCLEF/simple_cnn.py", line 78, in <module>
-    val_loader = torch.untils.data.DataLoader(val_data, shuffle=False, batch_size=batch_size, num_workers=4)
-AttributeError: module 'torch' has no attribute 'untils'
