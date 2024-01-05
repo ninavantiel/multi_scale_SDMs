@@ -64,9 +64,13 @@ class RasterPatchProvider(PatchProvider):
         self.normalize = normalize
         self.nan_value = nan_value
 
+        # open the tif file with rasterio
         with rasterio.open(self.raster_path) as src:
-            self.nb_layers = src.count
+            # read the data from the raster
+            self.data = src.read()
+
             self.nodata_value = src.nodatavals
+            self.nb_layers = src.count
             self.x_min = src.bounds.left # minimum longitude
             self.y_min = src.bounds.bottom # minimum latitude
             self.x_resolution = src.res[0]
@@ -74,7 +78,18 @@ class RasterPatchProvider(PatchProvider):
             self.n_rows = src.height
             self.n_cols = src.width
             self.crs = src.crs
-        
+
+            # iterate through all the layers
+            for i in range(src.count):
+                # replace the NoData values with np.nan
+                self.data = self.data.astype(np.float)
+                self.data[i] = np.where(self.data[i] == self.nodata_value[i], np.nan, self.data[i])
+                # normalize layer
+                if self.normalize:
+                    self.data[i] = (self.data[i] - np.nanmean(self.data[i]))/np.nanstd(self.data[i])
+                # replace np.nan entries with nan_value (default is 0)
+                self.data[i] = np.where(np.isnan(self.data[i]), self.nan_value, self.data[i])
+
         if self.nb_layers > 1:
             self.bands_names = [self.name+'_'+str(i+1) for i in range(self.nb_layers)]
         else:
@@ -100,26 +115,10 @@ class RasterPatchProvider(PatchProvider):
         x = int(self.n_rows - (lat - self.y_min) / self.y_resolution)
         y = int((lon - self.x_min) / self.x_resolution)
 
-        # open the tif file with rasterio
-        with rasterio.open(self.raster_path) as src:
-            # read the data from the raster
-            data = src.read()
-
-            # iterate through all the layers
-            for i in range(src.count):
-                # replace the NoData values with np.nan
-                data = data.astype(np.float)
-                data[i] = np.where(data[i] == self.nodata_value[i], np.nan, data[i])
-                # normalize layer
-                if self.normalize:
-                    data[i] = (data[i] - np.nanmean(data[i]))/np.nanstd(data[i])
-                # replace np.nan entries with nan_value (default is 0)
-                data[i] = np.where(np.isnan(data[i]), self.nan_value, data[i])
-        
         if self.patch_size == 1:
-            patch_data = [data[i, x, y] for i in range(self.nb_layers)]
+            patch_data = [self.data[i, x, y] for i in range(self.nb_layers)]
         else:
-            patch_data = [data[i, x - (self.patch_size // 2): x + (self.patch_size // 2), y - (self.patch_size // 2): y + (self.patch_size // 2)] for i in range(self.nb_layers)]
+            patch_data = [self.data[i, x - (self.patch_size // 2): x + (self.patch_size // 2), y - (self.patch_size // 2): y + (self.patch_size // 2)] for i in range(self.nb_layers)]
 
         tensor = np.concatenate([patch[np.newaxis] for patch in patch_data])
         if self.fill_zero_if_error and tensor.shape != (self.nb_layers, self.patch_size, self.patch_size):
