@@ -55,9 +55,10 @@ class MetaPatchProvider(PatchProvider):
         return result
     
 class RasterPatchProvider(PatchProvider):
-    def __init__(self, raster_path, size=128, normalize=True, fill_zero_if_error=False, nan_value=0):
+    def __init__(self, raster_path, size=128, flatten=False, normalize=True, fill_zero_if_error=False, nan_value=0):
         super().__init__(size, normalize)
         self.raster_path = raster_path
+        self.flatten = flatten
         self.fill_zero_if_error = fill_zero_if_error
         self.transformer = None
         self.name = os.path.basename(os.path.splitext(raster_path)[0])
@@ -123,6 +124,8 @@ class RasterPatchProvider(PatchProvider):
         tensor = np.concatenate([patch[np.newaxis] for patch in patch_data])
         if self.fill_zero_if_error and tensor.shape != (self.nb_layers, self.patch_size, self.patch_size):
             tensor = np.zeros((self.nb_layers, self.patch_size, self.patch_size))
+        if self.flatten:
+            tensor = tensor.flatten()
         return tensor
 
     def __str__(self):
@@ -139,14 +142,14 @@ class RasterPatchProvider(PatchProvider):
         return result
 
 class MultipleRasterPatchProvider(PatchProvider):
-    def __init__(self, rasters_folder, select=None, size=128, normalize=True, fill_zero_if_error=False):
+    def __init__(self, rasters_folder, select=None, size=128, flatten=False, normalize=True, fill_zero_if_error=False):
         files = os.listdir(rasters_folder)
         if select:
             rasters_paths = [r+'.tif' for r in select]
         else:
             rasters_paths = [f for f in files if f.endswith('.tif')]
         self.rasters_providers = [RasterPatchProvider(
-            rasters_folder+path, size=size, normalize=normalize, fill_zero_if_error=fill_zero_if_error
+            rasters_folder+path, size=size, flatten=flatten, normalize=normalize, fill_zero_if_error=fill_zero_if_error
         ) for path in rasters_paths]
         self.nb_layers = sum([len(raster) for raster in self.rasters_providers])
         self.bands_names = list(itertools.chain.from_iterable([raster.bands_names for raster in self.rasters_providers]))
