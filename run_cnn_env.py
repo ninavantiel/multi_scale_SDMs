@@ -8,7 +8,7 @@ from sklearn.metrics import roc_auc_score
 
 from data.PatchesProviders import MultipleRasterPatchProvider, RasterPatchProvider
 from data.Datasets import PatchesDataset
-from models import MLP
+from models import ShallowCNN
 
 # paths to data
 datadir = 'data/full_data/'
@@ -23,27 +23,27 @@ print(f"DEVICE: {dev}\n")
 
 # hyperparameters
 patch_size = 16
-flatten = True
+flatten = False
 batch_size = 1024
 learning_rate = 1e-3
 n_epochs = 150
-n_layers = 5
-width = 1000
-id = 'icosdemt' #False
+n_conv_layers = 2
+n_filters = [32, 64]
+fc_width = 1000
+id = False#'j0j0beah'
 
 # wandb
-run_name = '0116_MLP_env_16x16_flat_train_tinyPO'
-if not os.path.isdir('models/'+run_name): 
-    os.mkdir('models/'+run_name)
+run_name = '0118_ShallowCNN_env_16x16_train_tinyPO'
+if not os.path.isdir('models/'+run_name): os.mkdir('models/'+run_name)
 train_data_name = 'Presences_only_train_sampled_10_percent_min_100_occurrences'
 test_data_name = 'Presences_Absences_train'
-model_name = 'MLP'
+model_name = 'ShallowCNN'
 
 if __name__ == "__main__":
     # load patch providers for covariates
     print("Making patch providers for predictor variables...")
-    p_bioclim = MultipleRasterPatchProvider(bioclim_dir, size=patch_size, flatten=flatten) # size=1)
-    p_soil = MultipleRasterPatchProvider(soil_dir, size=patch_size, flatten=flatten) # size=1)
+    p_bioclim = MultipleRasterPatchProvider(bioclim_dir, size=patch_size, flatten=flatten) 
+    p_soil = MultipleRasterPatchProvider(soil_dir, size=patch_size, flatten=flatten) 
 
     # train data: presence only data 
     print("Making dataset for presence-only training data...")
@@ -66,7 +66,7 @@ if __name__ == "__main__":
     val_loader = torch.utils.data.DataLoader(val_data, shuffle=False, batch_size=batch_size, num_workers=8)
 
     # model and optimizer
-    model = MLP(n_features, n_species, n_layers, width).to(dev)
+    model = ShallowCNN(n_features, patch_size, n_species, n_conv_layers, n_filters, fc_width).to(dev)
     optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
 
     # loss function
@@ -81,8 +81,9 @@ if __name__ == "__main__":
             'epochs': n_epochs, 'batch_size': batch_size, 'lr': learning_rate, 
             'n_species': n_species, 'n_input_features': n_features,
             'train_data': train_data_name, 'test_data': test_data_name,
-            'optimizer':'SGD', 'model': model_name, 'n_layers': n_layers, 'width': width,
-            'loss': 'BCEWithLogitsLoss', 'env_patch_size': 1, 'id': id
+            'optimizer':'SGD', 'model': model_name, 'n_conv_layers': n_conv_layers, 
+            'n_filters': n_filters, 'width': fc_width,
+            'loss': 'BCEWithLogitsLoss', 'env_patch_size': patch_size, 'id': id
         }
     ) 
 
@@ -123,8 +124,9 @@ if __name__ == "__main__":
         model.eval()
         val_loss_list, labels_list, y_pred_list = [], [], []
         for inputs, labels in tqdm(val_loader):
+
             inputs = inputs.to(torch.float32).to(dev)
-            labels = labels.to(torch.float32).to(dev) 
+            labels = labels.to(torch.float32).to(dev)
             labels_list.append(labels.cpu().detach().numpy())
 
             y_pred = model(inputs)
@@ -173,7 +175,7 @@ if __name__ == "__main__":
     checkpoint = torch.load(f"models/{run_name}/best_val_loss.pth")
     best_val_loss_epoch = checkpoint['epoch']
 
-    model = MLP(n_features, n_species, n_layers, width).to(dev)
+    model = ShallowCNN(n_features, patch_size, n_species, n_conv_layers, n_filters, fc_width).to(dev)
     model.load_state_dict(checkpoint['state_dict'])
     optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
