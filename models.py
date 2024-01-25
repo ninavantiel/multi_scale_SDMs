@@ -1,4 +1,5 @@
 from torch import nn
+from math import floor
 
 class MLP(nn.Module):
 
@@ -36,7 +37,7 @@ class ShallowCNN(nn.Module):
     '''
 
     def __init__(self, input_feature_size, input_patch_size, output_size, 
-                 num_conv_layers, n_filters, fc_width, kernel_size=3, dropout=0.0):
+                 num_conv_layers, n_filters, fc_width, kernel_size=3, pooling_size=1, dropout=0.0):
         super(ShallowCNN, self).__init__()
 
         self.n_filters = [input_feature_size] + n_filters
@@ -49,8 +50,8 @@ class ShallowCNN(nn.Module):
             layers.append(nn.Conv2d(self.n_filters[i], self.n_filters[i+1], kernel_size=kernel_size))
             layers.append(nn.BatchNorm2d(self.n_filters[i+1]))
             layers.append(nn.SiLU())
-            patch_size = patch_size - kernel_size + 1
-            # layers.append(nn.MaxPool2d(kernel_size=pooling_size))
+            layers.append(nn.MaxPool2d(kernel_size=pooling_size, stride=pooling_size))
+            patch_size = floor((patch_size - kernel_size + 1) / 2)
             # layers.append(nn.Dropout(p=dropout))
 
         layers.append(nn.Flatten())

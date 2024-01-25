@@ -4,6 +4,7 @@ import numpy as np
 import os
 import rasterio
 import pyproj
+from PIL import Image
 
 class PatchProvider(object):
     def __init__(self, size, normalize) -> None:
@@ -29,16 +30,20 @@ class PatchProvider(object):
     # TO DO
 
 class MetaPatchProvider(PatchProvider):
-    def __init__(self, providers, one_provider):
+    def __init__(self, providers):#, one_provider=False):
         self.providers = providers
-        self.one_provider = one_provider
+        #self.one_provider = one_provider
         
-        if one_provider:
+        #if one_provider:
+        try:
             self.nb_layers = len(self.providers)
             self.band_names = self.providers.bands_names
-        else:
+            self.one_provider = True
+        except:
+        #else:
             self.nb_layers = sum([len(provider) for provider in self.providers])
             self.bands_names = list(itertools.chain.from_iterable([provider.bands_names for provider in self.providers]))            
+            self.one_provider = False
             
     def __getitem__(self, item):
         if self.one_provider: 
@@ -49,9 +54,13 @@ class MetaPatchProvider(PatchProvider):
     
     def __str__(self):
         result = 'Providers:\n'
-        for provider in self.providers:
-            result += str(provider)
+        if self.one_provider:
+            result += str(self.providers)
             result += '\n'
+        else:
+            for provider in self.providers:
+                result += str(provider)
+                result += '\n'
         return result
     
 class RasterPatchProvider(PatchProvider):
@@ -143,6 +152,7 @@ class RasterPatchProvider(PatchProvider):
 
 class MultipleRasterPatchProvider(PatchProvider):
     def __init__(self, rasters_folder, select=None, size=128, flatten=False, normalize=True, fill_zero_if_error=False):
+        super().__init__(size, normalize)
         files = os.listdir(rasters_folder)
         if select:
             rasters_paths = [r+'.tif' for r in select]
@@ -162,4 +172,64 @@ class MultipleRasterPatchProvider(PatchProvider):
         for raster in self.rasters_providers:
             result += str(raster)
             result += '\n'
+        return result
+    
+class JpegPatchProvider(PatchProvider):
+    def __init__(self, root_path, select=['rgb','nir'], size=128, normalize=True, dataset_stats='jpeg_patches_stats.csv'):
+        super().__init__(size, normalize)
+        self.root_path = root_path
+        self.ext = '.jpeg'
+        self.dataset_stats = os.path.join(self.root_path, dataset_stats)
+        
+        sub_dirs = next(os.walk(root_path))[1]
+        select = [x for x in select if x in sub_dirs]
+        if 'rgb' in select:
+            self.channels = ['red','green','blue'] + [x for x in select if x != 'rgb']
+        else:
+            self.channels = select
+        self.channel_folder = {'red': 'rgb', 'green': 'rgb', 'blue': 'rgb','nir':'nir'}
+        # 'swir1':'swir1','swir2':'swir2'
+
+        self.nb_layers = len(self.channels)
+        self.bands_names = list(self.channels)
+        self.size = size
+
+    def __getitem__(self, item):
+        patch_id = str(int(item['patchID']))
+
+        # folders that contain patches
+        sub_folder_1 = patch_id[-2:]
+        sub_folder_2 = patch_id[-4:-2]
+
+        tensor_list = []
+        for folder in set([self.channel_folder[x] for x in self.channels]):
+            path = os.path.join(self.root_path, folder, sub_folder_1, sub_folder_2, patch_id+self.ext)
+            img = np.asarray(Image.open(path))
+            # TODO normalize image
+            if folder == 'rgb':
+                img = img.transpose((2,0,1))
+            else:
+                img = np.expand_dims(img, axis=0)
+            tensor_list.append(img)
+
+        tensor = np.concatenate(tensor_list)            
+
+        if self.size < 128:
+            xmin = round((tensor.shape[1] - self.size) / 2)
+            xmax = round((tensor.shape[1] + self.size) / 2)
+            ymin = round((tensor.shape[2] - self.size) / 2)
+            ymax = round((tensor.shape[2] + self.size) / 2)
+            tensor = tensor[:, xmin:xmax, ymin:ymax]
+
+        self.n_rows = tensor.shape[1]
+        self.n_cols = tensor.shape[2]
+
+        return tensor            
+        
+    def __str__(self):
+        result = '-' * 50 + '\n'
+        result += 'n_layers: ' + str(self.nb_layers) + '\n'
+        # result += 'n_rows: ' + str(self.n_rows) + '\n'
+        # result += 'n_cols: ' + str(self.n_cols) + '\n'
+        result += '-' * 50
         return result

@@ -27,12 +27,12 @@ flatten = True
 batch_size = 1024
 learning_rate = 1e-3
 n_epochs = 150
-n_layers = 5
-width = 1000
-id = 'icosdemt' #False
+n_layers = 4
+width = 512
+id = False #'icosdemt'
 
 # wandb
-run_name = '0116_MLP_env_16x16_flat_train_tinyPO'
+run_name = '0124_smallMLP_env_16x16_flat_train_tinyPO'
 if not os.path.isdir('models/'+run_name): 
     os.mkdir('models/'+run_name)
 train_data_name = 'Presences_only_train_sampled_10_percent_min_100_occurrences'
@@ -42,8 +42,8 @@ model_name = 'MLP'
 if __name__ == "__main__":
     # load patch providers for covariates
     print("Making patch providers for predictor variables...")
-    p_bioclim = MultipleRasterPatchProvider(bioclim_dir, size=patch_size, flatten=flatten) # size=1)
-    p_soil = MultipleRasterPatchProvider(soil_dir, size=patch_size, flatten=flatten) # size=1)
+    p_bioclim = MultipleRasterPatchProvider(bioclim_dir, size=patch_size, flatten=flatten) 
+    p_soil = MultipleRasterPatchProvider(soil_dir, size=patch_size, flatten=flatten) 
 
     # train data: presence only data 
     print("Making dataset for presence-only training data...")
@@ -82,7 +82,7 @@ if __name__ == "__main__":
             'n_species': n_species, 'n_input_features': n_features,
             'train_data': train_data_name, 'test_data': test_data_name,
             'optimizer':'SGD', 'model': model_name, 'n_layers': n_layers, 'width': width,
-            'loss': 'BCEWithLogitsLoss', 'env_patch_size': 1, 'id': id
+            'loss': 'BCEWithLogitsLoss', 'env_patch_size': patch_size, 'id': id
         }
     ) 
 

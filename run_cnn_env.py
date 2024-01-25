@@ -30,10 +30,11 @@ n_epochs = 150
 n_conv_layers = 2
 n_filters = [32, 64]
 fc_width = 1000
-id = False#'j0j0beah'
+pool_size = 2
+id = False #'j0j0beah'
 
 # wandb
-run_name = '0118_ShallowCNN_env_16x16_train_tinyPO'
+run_name = '0125_ShallowCNN_maxpool_2layers_env_16x16_train_tinyPO'
 if not os.path.isdir('models/'+run_name): os.mkdir('models/'+run_name)
 train_data_name = 'Presences_only_train_sampled_10_percent_min_100_occurrences'
 test_data_name = 'Presences_Absences_train'
@@ -66,7 +67,9 @@ if __name__ == "__main__":
     val_loader = torch.utils.data.DataLoader(val_data, shuffle=False, batch_size=batch_size, num_workers=8)
 
     # model and optimizer
-    model = ShallowCNN(n_features, patch_size, n_species, n_conv_layers, n_filters, fc_width).to(dev)
+    model = ShallowCNN(
+        n_features, patch_size, n_species, n_conv_layers, 
+        n_filters, fc_width, pooling_size=pool_size).to(dev)
     optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
 
     # loss function
@@ -171,32 +174,32 @@ if __name__ == "__main__":
             }, f"models/{run_name}/best_val_loss.pth")  
 
     # final model evaluation
-    print('\nFINAL MODEL EVALUATION')
-    checkpoint = torch.load(f"models/{run_name}/best_val_loss.pth")
-    best_val_loss_epoch = checkpoint['epoch']
+    # print('\nFINAL MODEL EVALUATION')
+    # checkpoint = torch.load(f"models/{run_name}/best_val_loss.pth")
+    # best_val_loss_epoch = checkpoint['epoch']
 
-    model = ShallowCNN(n_features, patch_size, n_species, n_conv_layers, n_filters, fc_width).to(dev)
-    model.load_state_dict(checkpoint['state_dict'])
-    optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
-    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+    # model = ShallowCNN(n_features, patch_size, n_species, n_conv_layers, n_filters, fc_width).to(dev)
+    # model.load_state_dict(checkpoint['state_dict'])
+    # optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
+    # optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
 
-    model.eval()
-    val_loss_list, labels_list, y_pred_list = [], [], []
+    # model.eval()
+    # val_loss_list, labels_list, y_pred_list = [], [], []
 
-    for inputs, labels in tqdm(val_loader):
-        inputs = inputs.to(torch.float32).to(dev)
-        labels = labels.to(torch.float32).to(dev)
-        labels_list.append(labels.cpu().detach().numpy())
+    # for inputs, labels in tqdm(val_loader):
+    #     inputs = inputs.to(torch.float32).to(dev)
+    #     labels = labels.to(torch.float32).to(dev)
+    #     labels_list.append(labels.cpu().detach().numpy())
 
-        y_pred = model(inputs)
-        y_pred_sigmoid = torch.sigmoid(y_pred)
-        y_pred_list.append(y_pred_sigmoid.cpu().detach().numpy())
+    #     y_pred = model(inputs)
+    #     y_pred_sigmoid = torch.sigmoid(y_pred)
+    #     y_pred_list.append(y_pred_sigmoid.cpu().detach().numpy())
 
-        val_loss = loss_fn(y_pred, labels)
-        val_loss_list.append(val_loss.cpu().detach())    
+    #     val_loss = loss_fn(y_pred, labels)
+    #     val_loss_list.append(val_loss.cpu().detach())    
 
-    labels = np.concatenate(labels_list)
-    y_pred = np.concatenate(y_pred_list)
-    auc = roc_auc_score(labels, y_pred)
-    wandb.log({"best_val_loss_epoch": best_val_loss_epoch, "best_val_loss_auc": auc})
+    # labels = np.concatenate(labels_list)
+    # y_pred = np.concatenate(y_pred_list)
+    # auc = roc_auc_score(labels, y_pred)
+    # wandb.log({"best_val_loss_epoch": best_val_loss_epoch, "best_val_loss_auc": auc})
 
