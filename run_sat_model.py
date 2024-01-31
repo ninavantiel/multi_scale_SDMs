@@ -8,18 +8,15 @@ from sklearn.metrics import roc_auc_score
 
 from util import seed_everything
 from losses import full_weighted_loss, an_slds_loss, an_full_loss
-from data.PatchesProviders import MultipleRasterPatchProvider, RasterPatchProvider
-from data.Datasets import PatchesDataset, PatchesDatasetCooccurrences
-from models import MLP
+from data.PatchesProviders import JpegPatchProvider
+from data.Datasets import PatchesDatasetCooccurrences
+from models import get_resnet
 
 # paths to data
 datadir = 'data/full_data/'
-po_path = datadir+'Presence_only_occurrences/Presences_only_train_sampled_100_percent_min_1_occurrences.csv'
-#Presences_only_train_sampled_10_percent_min_100_occurrences.csv' #Presences_only_train_sampled_25_percent_min_10_occurrences.csv'
+po_path = datadir+'Presence_only_occurrences/Presences_only_train_sampled_10_percent_min_100_occurrences.csv' #Presences_only_train_sampled_25_percent_min_10_occurrences.csv'
 pa_path = datadir+'Presence_Absence_surveys/Presences_Absences_train.csv'
-bioclim_dir = datadir+'EnvironmentalRasters/Climate/BioClimatic_Average_1981-2010/'
-soil_dir = datadir+'EnvironmentalRasters/Soilgrids/'
-landcover_dir = datadir+'EnvironmentalRasters/LandCover/LandCover_MODIS_Terra-Aqua_500m.tif'
+sat_dir = datadir+'SatelliteImages/'
 
 seed = 42
 seed_everything(seed)
@@ -33,52 +30,37 @@ patch_size = 1
 flatten = True
 batch_size = 1024
 learning_rate = 1e-3
-n_epochs = 150
-n_layers = 5
-width = 1000
-id = False # 'algahfvy'#'h89qezru'#'algahfvy'#'y6j2s73t'
-n_max_low_occ = 50
+n_epochs = 500
+id = False 
 
 # wandb
-wandb_project = 'spatial_extent_glc23_env'
-run_name = '0131_MLP_env_1x1_an_full_loss_all_PA_species'
+wandb_project = 'spatial_extent_glc23_sat'
+run_name = '0130_resnet_sat_128'
 if not os.path.isdir('models/'+run_name): 
     os.mkdir('models/'+run_name)
-train_data_name = 'Presences_only_train_sampled_100_percent_min_1_occurrences'
+train_data_name = 'Presences_only_train_sampled_10_percent_min_100_occurrences'
 test_data_name = 'Presences_Absences_train'
-model_name = 'MLP'
+model_name = 'ResNet18'
 
 if __name__ == "__main__":
     # load patch providers for covariates
     print("Making patch providers for predictor variables...")
-    p_bioclim = MultipleRasterPatchProvider(bioclim_dir, size=patch_size, flatten=flatten) 
-    print('biolcim done')
-    p_soil = MultipleRasterPatchProvider(soil_dir, size=patch_size, flatten=flatten) 
-    print('soil done')
-    p_landcover = RasterPatchProvider(landcover_dir, size=patch_size, flatten=flatten)
-    print('landcover done')
-    ## !! LANDCOVER DOESNT HAVE SAME SCALE AS BIOCLIM AND SOIL!!
-    ## !! LANCOVER: 500M, ELEVATION: 30M 
-    # p_elev = RasterPatchProvider(elev_dir, size=patch_size, flatten=flatten)
-    # print('elev done')
+    p_sat = JpegPatchProvider(sat_dir, size=128)
 
     # train data: presence only data 
-    print("\nMaking dataset for presence-only training data...")
-    train_data = PatchesDatasetCooccurrences(occurrences=po_path, providers=(p_bioclim, p_soil, p_landcover))
-    print(f"TRAINING DATA: n_items={len(train_data)}, n_species={len(train_data.species)}")
+    print("Making dataset for presence-only training data...")
+    train_data = PatchesDatasetCooccurrences(occurrences=po_path, providers=(p_sat))
+    print(f"\nTRAINING DATA: n_items={len(train_data)}, n_species={len(train_data.species)}")
+    print(train_data[0][0].shape, train_data[0][1].shape)
 
     n_features = train_data[0][0].shape[0]
     n_species = len(train_data.species)
-    print(f"nb of features = {n_features}\nnb of species = {n_species}")
-
-    low_occ_species = train_data.species_counts[train_data.species_counts <= n_max_low_occ].index
-    low_occ_species_idx = np.where(np.isin(train_data.species, low_occ_species))[0]
-    print(f"nb of species with less than {n_max_low_occ} occurrences = {len(low_occ_species_idx)}")
+    print(f"nb of features = {n_features}")
 
     # validation data: presence absence data 
-    print("\nMaking dataset for presence-absence validation data...")
-    val_data = PatchesDatasetCooccurrences(occurrences=pa_path, providers=(p_bioclim, p_soil, p_landcover), species=train_data.species)
-    print(f"VALIDATION DATA: n_items={len(val_data)}, n_species={len(val_data.species)}")
+    print("Making dataset for presence-absence validation data...")
+    val_data = PatchesDatasetCooccurrences(occurrences=pa_path, providers=(p_sat), species=train_data.species)
+    print(f"\nVALIDATION DATA: n_items={len(val_data)}, n_species={len(val_data.species)}")
     print(val_data[0][0].shape, val_data[0][1].shape)
     
     # data loaders
@@ -86,13 +68,13 @@ if __name__ == "__main__":
     val_loader = torch.utils.data.DataLoader(val_data, shuffle=False, batch_size=batch_size, num_workers=8)
 
     # model and optimizer
-    model = MLP(n_features, n_species, n_layers, width).to(dev)
+    model = get_resnet(n_features, n_species).to(dev)
     optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
 
     # loss function
-    loss_fn = an_full_loss #full_weighted_loss
+    loss_fn = full_weighted_loss#an_full_loss###an_slds_loss#
     species_weights = torch.tensor(train_data.species_weights).to(dev)
-    bce_loss_fn = torch.nn.BCEWithLogitsLoss()
+    # bce_loss_fn = torch.nn.BCEWithLogitsLoss()
 
     if not id: 
         id = wandb.util.generate_id() 
@@ -103,8 +85,8 @@ if __name__ == "__main__":
             'epochs': n_epochs, 'batch_size': batch_size, 'lr': learning_rate, 
             'n_species': n_species, 'n_input_features': n_features,
             'train_data': train_data_name, 'test_data': test_data_name,
-            'optimizer':'SGD', 'model': model_name, 'n_layers': n_layers, 'width': width,
-            'loss': 'an_full_loss', 'env_patch_size': patch_size, 'id': id
+            'optimizer':'SGD', 'model': model_name, 
+            'loss': 'full_weighted_loss', 'sat_patch_size': patch_size, 'id': id
         }
     ) 
 
@@ -132,7 +114,7 @@ if __name__ == "__main__":
             # forward pass
             y_pred = model(inputs)
             y_pred_sigmoid = torch.sigmoid(y_pred)
-            loss = loss_fn(y_pred_sigmoid, labels)#, species_weights)
+            loss = loss_fn(y_pred_sigmoid, labels, species_weights)
             train_loss_list.append(loss.cpu().detach())
 
             # backward pass and weight update
@@ -155,24 +137,23 @@ if __name__ == "__main__":
             y_pred_list.append(y_pred_sigmoid.cpu().detach().numpy())
 
             # validation loss
-            val_loss = loss_fn(y_pred_sigmoid, labels)#, species_weights)
+            val_loss = loss_fn(y_pred_sigmoid, labels, species_weights)
             val_loss_list.append(val_loss.cpu().detach())
 
-            val_bce_loss = bce_loss_fn(y_pred, labels)
-            val_bce_loss_list.append(val_bce_loss.cpu().detach())
+            # val_bce_loss = bce_loss_fn(y_pred, labels)
+            # val_bce_loss_list.append(val_bce_loss.cpu().detach())
     
         avg_val_loss = np.array(val_loss_list).mean()
-        avg_val_bce_loss = np.array(val_bce_loss_list).mean()
+        # avg_val_bce_loss = np.array(val_bce_loss_list).mean()
         labels = np.concatenate(labels_list)
         y_pred = np.concatenate(y_pred_list)
         auc = roc_auc_score(labels, y_pred)
-        auc_low_occ = roc_auc_score(labels[:, low_occ_species_idx], y_pred[:, low_occ_species_idx])
         print(f"\tVALIDATION LOSS={avg_val_loss} \tVALIDATION AUC={auc}")
 
         wandb.log({
             "train_loss": avg_train_loss, "val_loss": avg_val_loss, 
-            "val_bce_loss": avg_val_bce_loss, 
-            "val_auc": auc, "val_auc_low_occ": auc_low_occ
+            # "val_bce_loss": avg_val_bce_loss, 
+            "val_auc": auc
         })
 
         # model checkpoint

@@ -1,6 +1,7 @@
 from abc import abstractmethod
 import itertools
 import numpy as np
+import pandas as pd
 import os
 import rasterio
 import pyproj
@@ -30,17 +31,14 @@ class PatchProvider(object):
     # TO DO
 
 class MetaPatchProvider(PatchProvider):
-    def __init__(self, providers):#, one_provider=False):
+    def __init__(self, providers):
         self.providers = providers
-        #self.one_provider = one_provider
         
-        #if one_provider:
         try:
             self.nb_layers = len(self.providers)
             self.band_names = self.providers.bands_names
             self.one_provider = True
         except:
-        #else:
             self.nb_layers = sum([len(provider) for provider in self.providers])
             self.bands_names = list(itertools.chain.from_iterable([provider.bands_names for provider in self.providers]))            
             self.one_provider = False
@@ -175,11 +173,11 @@ class MultipleRasterPatchProvider(PatchProvider):
         return result
     
 class JpegPatchProvider(PatchProvider):
-    def __init__(self, root_path, select=['rgb','nir'], size=128, normalize=True, dataset_stats='jpeg_patches_stats.csv'):
+    def __init__(self, root_path, select=['rgb','nir'], size=128, normalize=True):
         super().__init__(size, normalize)
         self.root_path = root_path
         self.ext = '.jpeg'
-        self.dataset_stats = os.path.join(self.root_path, dataset_stats)
+        # self.dataset_stats = os.path.join(self.root_path, dataset_stats)
         
         sub_dirs = next(os.walk(root_path))[1]
         select = [x for x in select if x in sub_dirs]
@@ -189,6 +187,12 @@ class JpegPatchProvider(PatchProvider):
             self.channels = select
         self.channel_folder = {'red': 'rgb', 'green': 'rgb', 'blue': 'rgb','nir':'nir'}
         # 'swir1':'swir1','swir2':'swir2'
+
+        if self.normalize:
+            self.stats = {k: {
+                'mean': pd.read_csv(root_path+k+'_means.csv')['mean'].values,
+                'std':pd.read_csv(root_path+k+'_std.csv')['std_dev'].values
+            } for k in select}
 
         self.nb_layers = len(self.channels)
         self.bands_names = list(self.channels)
@@ -205,7 +209,8 @@ class JpegPatchProvider(PatchProvider):
         for folder in set([self.channel_folder[x] for x in self.channels]):
             path = os.path.join(self.root_path, folder, sub_folder_1, sub_folder_2, patch_id+self.ext)
             img = np.asarray(Image.open(path))
-            # TODO normalize image
+            if self.normalize:
+                img = (img - self.stats[folder]['mean']) / self.stats[folder]['std']
             if folder == 'rgb':
                 img = img.transpose((2,0,1))
             else:

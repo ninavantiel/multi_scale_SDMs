@@ -3,7 +3,7 @@ import numpy as np
 from PIL import Image
 import pandas as pd
 import argparse
-
+from tqdm import tqdm
 
 def get_files_path_recursively(path, *args, suffix=''):
     """Retrieve specific files path recursively from directory.
@@ -72,26 +72,100 @@ def standardize(root_path:str='sample_data/SatelliteImages/',
         df.to_csv(output, index=False, sep=';')
     return stats['mean'][0], stats['std'][0]
 
+def per_channel_mean_std(root_path, output, ext=['jpg', 'jpeg']):
+    files = get_files_path_recursively(root_path, *ext)
+    dims = len(np.array(Image.open(files[0], mode='r')).shape)
+
+    imgs = []
+    for f in files:
+        img = np.array(Image.open(f, mode='r'))
+        if dims == 3:
+            img = np.transpose(img, (2,0,1))
+        elif  dims == 2:
+            img = np.expand_dims(img, axis=0)
+        imgs.append(img)
+    imgs = np.array(imgs)
+
+    stats = pd.DataFrame({
+        'mean': np.nanmean(imgs,axis=(0,2,3)),
+        'std': np.nanstd(imgs,axis=(0,2,3))
+    })
+    stats.to_csv(output, index=True, sep=';')
+
+def per_channel_mean(root_path, output, ext=['jpg', 'jpeg']):
+    files = get_files_path_recursively(root_path, *ext)
+    img_shape = np.array(Image.open(files[0], mode='r')).shape 
+    dims = len(img_shape)
+
+    if dims == 3:
+        sums = np.array([0.0] * img_shape[2]) 
+    elif dims == 2:
+        sums = np.array([0.0])
+    n_terms = 0
+
+    for f in tqdm(files):
+        img = np.array(Image.open(f, mode='r'))
+        img_sum = np.sum(img, axis=(0,1))
+        sums += img_sum
+        n_terms += img.shape[0] * img.shape[1]
+
+    means = sums / n_terms
+    means_df = pd.DataFrame({'mean': means})
+    means_df.to_csv(output, index=False)
+
+def per_channel_std(root_path, means_path, output, ext=['jpg', 'jpeg']):
+    files = get_files_path_recursively(root_path, *ext)
+    means = np.array( pd.read_csv(means_path)['mean'])
+    img_shape = np.array(Image.open(files[0], mode='r')).shape 
+    dims = len(img_shape)
+
+    if dims == 3:
+        sums = np.array([0.0] * img_shape[2]) 
+    elif dims == 2:
+        sums = np.array([0.0])
+    n_terms = 0
+
+    for f in tqdm(files):
+        img = np.array(Image.open(f, mode='r'))
+        sum_dev_mean = np.sum(np.power(img - means, 2), axis=(0,1))
+        sums += sum_dev_mean
+        n_terms += img.shape[0] * img.shape[1]
+    
+    std_devs = np.power(sums / n_terms, 0.5)
+    std_devs_df = pd.DataFrame({'std_dev': std_devs})
+    std_devs_df.to_csv(output, index=False)
 
 if __name__ == '__main__':
     PARSER = argparse.ArgumentParser()
     PARSER.add_argument('--root_path',
                         nargs=1,
                         type=str,
-                        default=['sample_data/SatelliteImages/'],
                         help='Rooth path.')
-    PARSER.add_argument('--ext',
-                        nargs=1,
-                        type=str,
-                        default=['jpg', 'jpeg'],
-                        help='File extension.')
     PARSER.add_argument('--out',
                         nargs=1,
                         type=str,
-                        default=['sample_data/SatelliteImages/jpeg_patches_sample_stats.csv'],
                         help='Output path.')
+    PARSER.add_argument('--stat',
+                        nargs=1,
+                        type=str,
+                        help='Statistic to compute ("mean" or "std")')
+    PARSER.add_argument('--mean_path',
+                        nargs=1,
+                        type=str,
+                        default=[''],
+                        help='Path to csv with mean values for computation of standard deviation')
+
     ARGS = PARSER.parse_args()
     path = ARGS.root_path[0]
-    ext = ARGS.ext
     out = ARGS.out[0]
-    standardize(path, ext=ext, output=out)
+    stat = ARGS.stat[0]
+    mean_path = ARGS.mean_path[0]
+
+    if stat == 'mean':
+        per_channel_mean(path, out)
+    elif stat == 'std':
+        assert os.path.exists(mean_path)
+        per_channel_std(path, mean_path, out)
+    else:
+        exit('Enter either "mean" of "std" as a statistic to compute')
+       
