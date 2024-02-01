@@ -15,8 +15,6 @@ from models import MLP
 # paths to data
 datadir = 'data/full_data/'
 po_path = datadir+'Presence_only_occurrences/Presences_only_train_sampled_100_percent_min_1_occurrences.csv'
-#Presences_only_train_sampled_10_percent_min_100_occurrences.csv' #Presences_only_train_sampled_25_percent_min_10_occurrences.csv'
-bg_path = datadir+'Presence_only_occurrences/Pseudoabsence_locations_bioclim_soil.csv'
 pa_path = datadir+'Presence_Absence_surveys/Presences_Absences_train.csv'
 bioclim_dir = datadir+'EnvironmentalRasters/Climate/BioClimatic_Average_1981-2010/'
 soil_dir = datadir+'EnvironmentalRasters/Soilgrids/'
@@ -37,13 +35,13 @@ learning_rate = 1e-3
 n_epochs = 150
 n_layers = 5
 width = 1000
-id = False
+id = False # 'algahfvy'#'h89qezru'#'algahfvy'#'y6j2s73t'
 n_max_low_occ = 50
-pseudoabsences = 'mls6tzzv'#True
+pseudoabsences = False
 
 # wandb
 wandb_project = 'spatial_extent_glc23_env'
-run_name = '0201_MLP_env_1x1_an_full_loss_all_PA_species_with_pseudoabsences'
+run_name = '0201_MLP_env_1x1_bce_loss_all_PA_species'
 if not os.path.isdir('models/'+run_name): 
     os.mkdir('models/'+run_name)
 train_data_name = 'Presences_only_train_sampled_100_percent_min_1_occurrences'
@@ -66,7 +64,7 @@ if __name__ == "__main__":
 
     # train data: presence only data 
     print("\nMaking dataset for presence-only training data...")
-    train_data = PatchesDatasetCooccurrences(occurrences=po_path, providers=(p_bioclim, p_soil, p_landcover), pseudoabsences=bg_path)
+    train_data = PatchesDatasetCooccurrences(occurrences=po_path, providers=(p_bioclim, p_soil, p_landcover))
     print(f"TRAINING DATA: n_items={len(train_data)}, n_species={len(train_data.species)}")
 
     n_features = train_data[0][0].shape[0]
@@ -92,9 +90,7 @@ if __name__ == "__main__":
     optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
 
     # loss function
-    loss_fn = an_full_loss #full_weighted_loss
-    species_weights = torch.tensor(train_data.species_weights).to(dev)
-    val_loss_fn = torch.nn.BCEWithLogitsLoss()
+    loss_fn = torch.nn.BCEWithLogitsLoss()
 
     if not id: 
         id = wandb.util.generate_id() 
@@ -106,7 +102,7 @@ if __name__ == "__main__":
             'n_species': n_species, 'n_input_features': n_features,
             'train_data': train_data_name, 'test_data': test_data_name, 'pseudoabsences': pseudoabsences,
             'optimizer':'SGD', 'model': model_name, 'n_layers': n_layers, 'width': width,
-            'loss': 'an_full_loss_w_pseudoabsences', 'val_loss': 'BCEloss', 
+            'loss': 'bce_loss', 
             'env_patch_size': patch_size, 'id': id
         }
     ) 
@@ -136,7 +132,7 @@ if __name__ == "__main__":
                 # forward pass
                 y_pred = model(inputs)
                 y_pred_sigmoid = torch.sigmoid(y_pred)
-                loss = loss_fn(y_pred_sigmoid, labels)#, species_weights)
+                loss = loss_fn(y_pred, labels)#, species_weights)
             
             else:
                 inputs, labels, bg_inputs = batch
@@ -149,7 +145,7 @@ if __name__ == "__main__":
                 bg_pred = output[len(inputs):]
                 y_pred_sigmoid = torch.sigmoid(y_pred)
                 bg_pred_sigmoid = torch.sigmoid(bg_pred)
-                loss = loss_fn(y_pred_sigmoid, labels, bg_pred_sigmoid)
+                loss = loss_fn(y_pred, labels, bg_pred)
             
             train_loss_list.append(loss.cpu().detach())
 
@@ -162,7 +158,7 @@ if __name__ == "__main__":
         print(f"{epoch}) TRAIN LOSS={avg_train_loss}")
 
         model.eval()
-        val_loss_list, val_train_loss_list, labels_list, y_pred_list = [], [], [], []
+        val_loss_list, labels_list, y_pred_list = [], [], []
         for inputs, labels in tqdm(val_loader):
             inputs = inputs.to(torch.float32).to(dev)
             labels = labels.to(torch.float32).to(dev) 
@@ -171,16 +167,11 @@ if __name__ == "__main__":
             y_pred = model(inputs)
             y_pred_sigmoid = torch.sigmoid(y_pred)
             y_pred_list.append(y_pred_sigmoid.cpu().detach().numpy())
-
-            # validation loss
-            val_loss = val_loss_fn(y_pred, labels) 
-            val_loss_list.append(val_loss.cpu().detach())
             
-            val_train_loss = loss_fn(y_pred_sigmoid, labels)#, species_weights)
-            val_train_loss_list.append(val_train_loss.cpu().detach())
+            val_loss = loss_fn(y_pred, labels)#, species_weights)
+            val_loss_list.append(val_loss.cpu().detach())
     
         avg_val_loss = np.array(val_loss_list).mean()
-        avg_val_train_loss = np.array(val_train_loss_list).mean()
         labels = np.concatenate(labels_list)
         y_pred = np.concatenate(y_pred_list)
         auc = roc_auc_score(labels, y_pred)
@@ -189,7 +180,7 @@ if __name__ == "__main__":
 
         wandb.log({
             "train_loss": avg_train_loss, "val_loss": avg_val_loss, 
-            "val_train_loss": avg_val_train_loss, 
+            "val_train_loss": avg_val_loss, 
             "val_auc": auc, "val_auc_low_occ": auc_low_occ
         })
 

@@ -90,8 +90,11 @@ class RasterPatchProvider(PatchProvider):
             # iterate through all the layers
             for i in range(src.count):
                 # replace the NoData values with np.nan
-                self.data = self.data.astype(np.float)
-                self.data[i] = np.where(self.data[i] == self.nodata_value[i], np.nan, self.data[i])
+                self.data = self.data.astype(float)
+                if 'Soilgrids' in self.raster_path:
+                    self.data[i] = np.where(np.isclose(self.data[i], self.nodata_value[i]), np.nan, self.data[i])
+                else:
+                    self.data[i] = np.where(self.data[i] == self.nodata_value[i], np.nan, self.data[i])
                 # normalize layer
                 if self.normalize:
                     self.data[i] = (self.data[i] - np.nanmean(self.data[i]))/np.nanstd(self.data[i])
@@ -113,20 +116,31 @@ class RasterPatchProvider(PatchProvider):
         :param item: dictionary that needs to contains at least the keys latitude and longitude ({'lat': lat, 'lon':lon})
         :return: return the environmental tensor or vector (size>1 or size=1)
         """
+        # if 'x' in item.keys() and 'y' in item.keys():
+        #     x = int(item['x'])
+        #     y = int(item['y'])
+        #     print('xy', x, y, self.data.shape)
+        
         # convert the lat, lon coordinates to EPSG:32738
         if self.transformer:
             lon, lat = self.transformer.transform(item['lon'], item['lat'])
         else:
             lon, lat = (item['lon'], item['lat'])
-        
+            
         # calculate the x, y coordinate of the point of interest
         x = int(self.n_rows - (lat - self.y_min) / self.y_resolution)
         y = int((lon - self.x_min) / self.x_resolution)
 
-        if self.patch_size == 1:
-            patch_data = [self.data[i, x, y] for i in range(self.nb_layers)]
-        else:
-            patch_data = [self.data[i, x - (self.patch_size // 2): x + (self.patch_size // 2), y - (self.patch_size // 2): y + (self.patch_size // 2)] for i in range(self.nb_layers)]
+        # if 'x' in item.keys() and 'y' in item.keys():
+        #     print(x, y, item, self.data.shape)
+        try:
+            if self.patch_size == 1:
+                patch_data = [self.data[i, x, y] for i in range(self.nb_layers)]
+            else:
+                patch_data = [self.data[i, x - (self.patch_size // 2): x + (self.patch_size // 2), y - (self.patch_size // 2): y + (self.patch_size // 2)] for i in range(self.nb_layers)]
+        except:
+            print(x, y, item, self.data.shape)
+            exit()
 
         tensor = np.concatenate([patch[np.newaxis] for patch in patch_data])
         if self.fill_zero_if_error and tensor.shape != (self.nb_layers, self.patch_size, self.patch_size):
@@ -149,7 +163,7 @@ class RasterPatchProvider(PatchProvider):
         return result
 
 class MultipleRasterPatchProvider(PatchProvider):
-    def __init__(self, rasters_folder, select=None, size=128, flatten=False, normalize=True, fill_zero_if_error=False):
+    def __init__(self, rasters_folder, select=None, size=1, flatten=False, normalize=True, fill_zero_if_error=False, nan_value=0):
         super().__init__(size, normalize)
         files = os.listdir(rasters_folder)
         if select:
@@ -157,7 +171,7 @@ class MultipleRasterPatchProvider(PatchProvider):
         else:
             rasters_paths = [f for f in files if f.endswith('.tif')]
         self.rasters_providers = [RasterPatchProvider(
-            rasters_folder+path, size=size, flatten=flatten, normalize=normalize, fill_zero_if_error=fill_zero_if_error
+            rasters_folder+path, size=size, flatten=flatten, normalize=normalize, fill_zero_if_error=fill_zero_if_error, nan_value=nan_value
         ) for path in rasters_paths]
         self.nb_layers = sum([len(raster) for raster in self.rasters_providers])
         self.bands_names = list(itertools.chain.from_iterable([raster.bands_names for raster in self.rasters_providers]))

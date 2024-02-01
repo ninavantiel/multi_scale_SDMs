@@ -52,10 +52,12 @@ class PatchesDatasetCooccurrences(Dataset):
         species=None,
         label_name='speciesId',
         item_columns=['lat','lon','patchID','dayOfYear'],
+        pseudoabsences=None
     ):
         self.occurrences = Path(occurrences)
         self.label_name = label_name
         self.item_columns = item_columns
+        self.pseudoabsences = pseudoabsences
 
         df = pd.read_csv(self.occurrences, sep=";", header='infer', low_memory=False)
         if species is None: 
@@ -70,6 +72,10 @@ class PatchesDatasetCooccurrences(Dataset):
         ).value_counts().sort_index()
         self.species_weights = (n / self.species_counts).values
 
+        if self.pseudoabsences is not None:
+            self.pseudoabsence_items = pd.read_csv(self.pseudoabsences).sample(n)
+            print('nb pseudoabsences = ', self.pseudoabsence_items.shape)
+
         self.base_providers = providers
         self.provider = MetaPatchProvider(self.base_providers)
 
@@ -80,10 +86,15 @@ class PatchesDatasetCooccurrences(Dataset):
         item = self.items.iloc[index][self.item_columns].to_dict()
         item_species = self.items.iloc[index][self.label_name]
         labels = 1 * np.isin(self.species, item_species)
-
         patch = self.provider[item]
 
-        return patch, labels
+        if self.pseudoabsences is None:
+            return patch, labels
+        
+        else:
+            pseudoabsence_item = self.pseudoabsence_items.iloc[index].to_dict()
+            pseudoabsence_patch = self.provider[pseudoabsence_item]
+            return patch, labels, pseudoabsence_patch
 
 class MultiScalePatchesDatasetCooccurrences(PatchesDatasetCooccurrences):
     def __init__(
@@ -105,3 +116,5 @@ class MultiScalePatchesDatasetCooccurrences(PatchesDatasetCooccurrences):
         patch_list = [provider[item] for provider in self.providers]
 
         return patch_list, labels
+    
+        # add option to fetch pseudoabsences here later if necessary
