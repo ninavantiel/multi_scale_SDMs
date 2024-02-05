@@ -179,13 +179,10 @@ class RasterPatchProvider(PatchProvider):
         # read the data of the patch from all layers
         if self.patch_size == 1:
             patch_data = [self.data[i, x, y] for i in range(self.nb_layers)]
-            #patch_data = self.data[:,x,y]
         else:
             patch_data = [self.data[i, x - (self.patch_size // 2): x + (self.patch_size // 2), y - (self.patch_size // 2): y + (self.patch_size // 2)] for i in range(self.nb_layers)]
-            # patch_data = self.data[:, x - (self.patch_size // 2): x + (self.patch_size // 2), y - (self.patch_size // 2): y + (self.patch_size // 2)]
 
         tensor = np.concatenate([patch[np.newaxis] for patch in patch_data])
-        # tensor = patch_data
         if self.fill_zero_if_error and tensor.shape != (self.nb_layers, self.patch_size, self.patch_size):
             tensor = np.zeros((self.nb_layers, self.patch_size, self.patch_size))
         return tensor

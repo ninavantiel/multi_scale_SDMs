@@ -7,7 +7,7 @@ import os
 from sklearn.metrics import roc_auc_score
 
 from util import seed_everything
-from losses import full_weighted_loss, an_slds_loss, an_full_loss
+from losses import full_weighted_loss, an_full_loss
 from data.PatchesProviders import MultipleRasterPatchProvider, RasterPatchProvider
 from data.Datasets import PatchesDataset, PatchesDatasetCooccurrences
 from models import MLP
@@ -39,11 +39,13 @@ n_layers = 5
 width = 1000
 id = False
 n_max_low_occ = 50
-pseudoabsences = 'mls6tzzv'#True
+pseudoabsences = True
+lambda2 = 0.5
 
 # wandb
 wandb_project = 'spatial_extent_glc23_env'
-run_name = '0201_MLP_env_1x1_an_full_loss_all_PA_species_with_pseudoabsences'
+run_name = '0201_MLP_env_1x1_weighted_loss_05_all_PA_species_with_pseudoabsences'
+# run_name = '0201_MLP_env_1x1_an_full_loss_all_PA_species_with_pseudoabsences'
 if not os.path.isdir('models/'+run_name): 
     os.mkdir('models/'+run_name)
 train_data_name = 'Presences_only_train_sampled_100_percent_min_1_occurrences'
@@ -92,7 +94,7 @@ if __name__ == "__main__":
     optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
 
     # loss function
-    loss_fn = an_full_loss #full_weighted_loss
+    loss_fn = full_weighted_loss#an_full_loss #
     species_weights = torch.tensor(train_data.species_weights).to(dev)
     val_loss_fn = torch.nn.BCEWithLogitsLoss()
 
@@ -106,7 +108,7 @@ if __name__ == "__main__":
             'n_species': n_species, 'n_input_features': n_features,
             'train_data': train_data_name, 'test_data': test_data_name, 'pseudoabsences': pseudoabsences,
             'optimizer':'SGD', 'model': model_name, 'n_layers': n_layers, 'width': width,
-            'loss': 'an_full_loss_w_pseudoabsences', 'val_loss': 'BCEloss', 
+            'loss': 'full_weighted_loss_w_pseudoabsences', 'val_loss': 'BCEloss', 'lambda2': lambda2,
             'env_patch_size': patch_size, 'id': id
         }
     ) 
@@ -136,7 +138,7 @@ if __name__ == "__main__":
                 # forward pass
                 y_pred = model(inputs)
                 y_pred_sigmoid = torch.sigmoid(y_pred)
-                loss = loss_fn(y_pred_sigmoid, labels)#, species_weights)
+                loss = loss_fn(y_pred_sigmoid, labels, species_weights)
             
             else:
                 inputs, labels, bg_inputs = batch
@@ -149,7 +151,7 @@ if __name__ == "__main__":
                 bg_pred = output[len(inputs):]
                 y_pred_sigmoid = torch.sigmoid(y_pred)
                 bg_pred_sigmoid = torch.sigmoid(bg_pred)
-                loss = loss_fn(y_pred_sigmoid, labels, bg_pred_sigmoid)
+                loss = loss_fn(y_pred_sigmoid, labels, species_weights, lambda2, bg_pred_sigmoid)
             
             train_loss_list.append(loss.cpu().detach())
 
@@ -176,7 +178,7 @@ if __name__ == "__main__":
             val_loss = val_loss_fn(y_pred, labels) 
             val_loss_list.append(val_loss.cpu().detach())
             
-            val_train_loss = loss_fn(y_pred_sigmoid, labels)#, species_weights)
+            val_train_loss = loss_fn(y_pred_sigmoid, labels, species_weights)
             val_train_loss_list.append(val_train_loss.cpu().detach())
     
         avg_val_loss = np.array(val_loss_list).mean()

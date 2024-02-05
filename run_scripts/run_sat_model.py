@@ -22,8 +22,7 @@ seed = 42
 seed_everything(seed)
 
 # device (cpu ou cuda)
-dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print(f"DEVICE: {dev}\n")
+
 
 # hyperparameters
 patch_size = 1

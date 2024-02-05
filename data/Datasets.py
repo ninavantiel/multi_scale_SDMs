@@ -66,15 +66,18 @@ class PatchesDatasetCooccurrences(Dataset):
             self.species = species
         self.items = pd.DataFrame(df.groupby(item_columns)[label_name].agg(list)).reset_index()
 
-        n = self.items.shape[0]
+        self.n_items = self.items.shape[0]
+        self.n_species = len(self.species)
+        print(f"nb items = {self.n_items}\nnb species = {self.n_species}")
+
         self.species_counts = pd.Series(
             [sps for sps_list in self.items[label_name] for sps in sps_list]
         ).value_counts().sort_index()
-        self.species_weights = (n / self.species_counts).values
+        self.species_weights = (self.n_items / self.species_counts).values
 
         if self.pseudoabsences is not None:
-            self.pseudoabsence_items = pd.read_csv(self.pseudoabsences).sample(n)
-            print('nb pseudoabsences = ', self.pseudoabsence_items.shape)
+            self.pseudoabsence_items = pd.read_csv(self.pseudoabsences).sample(self.n_items)
+            print(f"nb pseudoabsences = {self.pseudoabsence_items.shape[0]}")
 
         self.base_providers = providers
         self.provider = MetaPatchProvider(self.base_providers)
