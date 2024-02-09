@@ -27,6 +27,43 @@ human_footprint_path = datadir+'EnvironmentalRasters/HumanFootprint/summarized/H
 landcover_path = datadir+'EnvironmentalRasters/LandCover/LandCover_MODIS_Terra-Aqua_500m.tif'
 # elevation_path = datadir+'EnvironmentalRasters/Elevation/ASTER_Elevation.tif'
 
+def make_providers(covariate_paths_list, patch_size, flatten):
+    print(f"\nMaking patch providers for covariates: size={patch_size}x{patch_size}, flatten={flatten}")
+    providers = []
+    for cov in covariate_paths_list:
+        print(f"\t - {cov}")
+        if 'SatelliteImages' in cov:
+            if flatten and patch_size != 1: 
+                print("jpeg patch provider for satellite images cannot flatten image patches")
+                return
+            providers.append(JpegPatchProvider(cov, size=patch_size))
+        elif '.tif' in cov:
+            providers.append(RasterPatchProvider(cov, size=patch_size, flatten=flatten))
+        else:
+            providers.append(MultipleRasterPatchProvider(cov, size=patch_size, flatten=flatten))
+    return providers
+
+def get_model(model_name, n_features, n_species, model_params=None, patch_size=None):
+    if model_name == 'MLP':
+        model = MLP(n_features, n_species, 
+                    model_params['n_layers'], 
+                    model_params['width'], 
+                    model_params['dropout'])
+    elif model_name == 'CNN':
+        model = ShallowCNN(n_features, patch_size, n_species,
+                           model_params['n_conv_layers'], 
+                           model_params['n_filters'], 
+                           model_params['width'], 
+                           model_params['kernel_size'], 
+                           model_params['pooling_size'], 
+                           model_params['dropout'])
+    elif model_name == 'ResNet':
+        if n_features != 3 and n_features != 4:
+            exit("ResNet adapted only for 3 or 4 input bands")
+        model = get_resnet(n_species, n_features)
+    return model
+
+
 def train_model(
     run_name, 
     log_wandb, 
@@ -35,17 +72,18 @@ def train_model(
     train_occ_path=po_path, 
     random_bg_path=None, 
     val_occ_path=pa_path, 
-    n_max_low_occ=50,
+    # n_max_low_occ=50,
     patch_size=1, 
     covariates = [], # path to covariate directories or tif files
     model='MLP', #choices: 'MLP', 'CNN', 'ResNet'
-    n_layers=5, 
-    width=1000, 
-    n_conv_layers=2,
-    n_filters=[32, 64],
-    kernel_size=3, 
-    pooling_size=1, 
-    dropout=0.0,
+    model_params={},
+    # n_layers=5, 
+    # width=1000, 
+    # n_conv_layers=2,
+    # n_filters=[32, 64],
+    # kernel_size=3, 
+    # pooling_size=1, 
+    # dropout=0.0,
     loss='weighted_loss', #choices: 'weighted_loss', 'an_full_loss'
     lambda2=1,
     n_epochs=150, 
@@ -59,36 +97,13 @@ def train_model(
 
     # covariate patch providers 
     flatten = True if model == 'MLP' else False
-    print(f"\nMaking patch providers for covariates: size={patch_size}x{patch_size}, flatten={flatten}")
-    providers = []
-    for cov in covariates:
-        print(f"\t - {cov}")
-        if 'SatelliteImages' in cov:
-            if flatten and patch_size != 1: 
-                exit("jpeg patch provider for satellite images cannot flatten image patches")
-            providers.append(JpegPatchProvider(cov, size=patch_size))
-        elif '.tif' in cov:
-            providers.append(RasterPatchProvider(cov, size=patch_size, flatten=flatten))
-        else:
-            providers.append(MultipleRasterPatchProvider(cov, size=patch_size, flatten=flatten))
-    
+    providers = make_providers(covariates, patch_size, flatten)
+
     # training data
-    if random_bg_path is None:
-        random_bg = False
-        print("\nMaking dataset for training occurrences")
-        train_data = PatchesDatasetCooccurrences(occurrences=train_occ_path, providers=providers)
-    else:
-        random_bg = True
-        print("\nMaking dataset for training occurrences with random background points")
-        train_data = PatchesDatasetCooccurrences(occurrences=train_occ_path, providers=providers, pseudoabsences=random_bg_path)
-
-    input_shape = train_data[0][0].shape
+    train_data = PatchesDatasetCooccurrences(occurrences=train_occ_path, providers=providers, pseudoabsences=random_bg_path)
     n_species = train_data.n_species
+    input_shape = train_data[0][0].shape
     print(f"input shape = {input_shape}")
-
-    low_occ_species = train_data.species_counts[train_data.species_counts <= n_max_low_occ].index
-    low_occ_species_idx = np.where(np.isin(train_data.species, low_occ_species))[0]
-    print(f"nb of species with less than {n_max_low_occ} occurrences = {len(low_occ_species_idx)}")
 
     # validation data
     print("\nMaking dataset for validation occurrences")
@@ -98,24 +113,8 @@ def train_model(
     train_loader = torch.utils.data.DataLoader(train_data, shuffle=True, batch_size=batch_size, num_workers=8)
     val_loader = torch.utils.data.DataLoader(val_data, shuffle=False, batch_size=batch_size)#, num_workers=4)
 
-    start = time.time()
-    print(next(iter(train_loader)))
-    end = time.time()
-    print(f"TIME = {end-start}")
-
     # model and optimizer
-    if model == 'MLP':
-        model = MLP(input_shape[0], n_species, 
-                    n_layers, width, dropout).to(dev)
-    elif model == 'CNN':
-        model = ShallowCNN(input_shape[0], patch_size, n_species,
-                           n_conv_layers, n_filters, width, 
-                           kernel_size, pooling_size, dropout).to(dev)
-    elif model == 'ResNet':
-        if input_shape[0] != 3 and input_shape[0] != 4:
-            exit("ResNet adapted only for 3 or 4 input bands")
-        model = get_resnet(n_species, input_shape[0]).to(dev)
-
+    model = get_model(model, input_shape[0], n_species, model_params, patch_size).to(dev)
     optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
 
     # loss functions
@@ -159,34 +158,21 @@ def train_model(
 
         model.train()
         train_loss_list = []
-        for batch in tqdm(train_loader):
-            if not random_bg:
-                inputs, labels = batch 
-                inputs = inputs.to(torch.float32).to(dev)
-                labels = labels.to(torch.float32).to(dev) 
-                # forward pass
-                y_pred = torch.sigmoid(model(inputs))
-                # y_pred_sigmoid = torch.sigmoid(y_pred)
-                if loss == 'weighted_loss':
-                    train_loss = loss_fn(y_pred, labels, species_weights)
-                else:
-                    train_loss = loss_fn(y_pred, labels)
-            
+        for po_inputs, labels, bg_inputs in tqdm(train_loader):
+            if random_bg_path is None:
+                inputs = po_inputs.to(torch.float32).to(dev)
             else:
-                inputs, labels, bg_inputs = batch
-                concat_inputs = torch.cat((inputs, bg_inputs), 0).to(torch.float32).to(dev)
-                labels = labels.to(torch.float32).to(dev) 
-                # forward pass
-                output = torch.sigmoid(model(concat_inputs))
-                y_pred = output[0:len(inputs)]
-                bg_pred = output[len(inputs):]
-                # y_pred_sigmoid = torch.sigmoid(y_pred)
-                # bg_pred_sigmoid = torch.sigmoid(bg_pred)
-                if loss == 'weighted_loss':
-                    train_loss = loss_fn(y_pred, labels, species_weights, lambda2, bg_pred)
-                else:
-                    train_loss = loss_fn(y_pred, labels)
+                inputs = torch.cat((inputs, bg_inputs), 0).to(torch.float32).to(dev)
+            labels = labels.to(torch.float32).to(dev) 
             
+            # forward pass
+            y_pred = torch.sigmoid(model(inputs))
+            if random_bg_path is None:
+                train_loss = loss_fn(y_pred, labels, species_weights)
+            else:
+                bg_pred = y_pred[len(po_inputs):]
+                y_pred = y_pred[0:len(po_inputs)]
+                train_loss = loss_fn(y_pred, labels, species_weights, lambda2, bg_pred)
             train_loss_list.append(train_loss.cpu().detach())
 
             # backward pass and weight update
@@ -206,7 +192,6 @@ def train_model(
             labels_list.append(labels.cpu().detach().numpy())
 
             y_pred = torch.sigmoid(model(inputs))
-            # y_pred_sigmoid = torch.sigmoid(y_pred)
             y_pred_list.append(y_pred.cpu().detach().numpy())
 
             # validation loss
@@ -217,7 +202,7 @@ def train_model(
         labels = np.concatenate(labels_list)
         y_pred = np.concatenate(y_pred_list)
         auc = roc_auc_score(labels, y_pred)
-        auc_low_occ = roc_auc_score(labels[:, low_occ_species_idx], y_pred[:, low_occ_species_idx])
+        auc_low_occ = roc_auc_score(labels[:, train_data.low_occ_species_idx], y_pred[:, train_data.low_occ_species_idx])
         print(f"\tVALIDATION LOSS={avg_val_loss} \tVALIDATION AUC={auc}")
 
         if log_wandb:

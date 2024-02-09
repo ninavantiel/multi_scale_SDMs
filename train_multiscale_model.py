@@ -113,7 +113,7 @@ def train_multiscale_model(
                 exit("ResNet adapted only for 3 or 4 input bands")
             model = get_resnet(embed_shape, input_shape[0])
         models.append(model)
-        
+
     model = MultiScaleModel(
         models[0], models[1], n_species, embed_shape, embed_shape
     ).to(dev)
