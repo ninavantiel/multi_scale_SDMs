@@ -9,8 +9,8 @@ from sklearn.metrics import roc_auc_score
 
 from util import seed_everything
 from data.PatchesProviders import RasterPatchProvider, MultipleRasterPatchProvider, JpegPatchProvider
-from data.Datasets import PatchesDatasetCooccurrences
-from models import MLP, ShallowCNN, get_resnet
+from data.Datasets import MultiScalePatchesDatasetCooccurrences, PatchesDatasetCooccurrences
+from models import MLP, ShallowCNN, get_resnet, MultiScaleModel
 from losses import weighted_loss, an_full_loss
 
 datadir = 'data/full_data/'
@@ -27,18 +27,18 @@ human_footprint_path = datadir+'EnvironmentalRasters/HumanFootprint/summarized/H
 landcover_path = datadir+'EnvironmentalRasters/LandCover/LandCover_MODIS_Terra-Aqua_500m.tif'
 # elevation_path = datadir+'EnvironmentalRasters/Elevation/ASTER_Elevation.tif'
 
-def train_model(
+def train_multiscale_model(
     run_name, 
     log_wandb, 
     wandb_project,
     wandb_id=None, 
     train_occ_path=po_path, 
-    random_bg_path=None, 
     val_occ_path=pa_path, 
     n_max_low_occ=50,
-    patch_size=1, 
-    covariates = [], # path to covariate directories or tif files
-    model='MLP', #choices: 'MLP', 'CNN', 'ResNet'
+    patch_sizes=[], 
+    covariates=[], # list of path to covariate directories or tif files
+    model_names=['MLP','ResNet'], #'MLP', 'CNN', 'ResNet'
+    embed_shape=512,
     n_layers=5, 
     width=1000, 
     n_conv_layers=2,
@@ -46,10 +46,10 @@ def train_model(
     kernel_size=3, 
     pooling_size=1, 
     dropout=0.0,
-    loss='weighted_loss', #choices: 'weighted_loss', 'an_full_loss'
+    loss='weighted_loss', #'an_full_loss'
     lambda2=1,
     n_epochs=150, 
-    batch_size=1024, 
+    batch_size=128, 
     learning_rate=1e-3, 
     seed=42
 ):
@@ -58,33 +58,32 @@ def train_model(
     print(f"DEVICE: {dev}")
 
     # covariate patch providers 
-    flatten = True if model == 'MLP' else False
-    print(f"\nMaking patch providers for covariates: size={patch_size}x{patch_size}, flatten={flatten}")
+    flatten = [True if model == 'MLP' else False for model in model_names]
+    print(f"\nMaking patch providers for covariates: patch sizes={patch_sizes}, flatten={flatten}")
     providers = []
-    for cov in covariates:
-        print(f"\t - {cov}")
-        if 'SatelliteImages' in cov:
-            if flatten and patch_size != 1: 
-                exit("jpeg patch provider for satellite images cannot flatten image patches")
-            providers.append(JpegPatchProvider(cov, size=patch_size))
-        elif '.tif' in cov:
-            providers.append(RasterPatchProvider(cov, size=patch_size, flatten=flatten))
-        else:
-            providers.append(MultipleRasterPatchProvider(cov, size=patch_size, flatten=flatten))
-    
-    # training data
-    if random_bg_path is None:
-        random_bg = False
-        print("\nMaking dataset for training occurrences")
-        train_data = PatchesDatasetCooccurrences(occurrences=train_occ_path, providers=providers)
-    else:
-        random_bg = True
-        print("\nMaking dataset for training occurrences with random background points")
-        train_data = PatchesDatasetCooccurrences(occurrences=train_occ_path, providers=providers, pseudoabsences=random_bg_path)
+    for group, patch_size, f in zip(covariates, patch_sizes, flatten):
 
-    input_shape = train_data[0][0].shape
+        group_providers = []
+        for cov in group:
+            print(f"\t - {cov}")
+            if 'SatelliteImages' in cov:
+                if f and patch_size != 1: 
+                    exit("jpeg patch provider for satellite images cannot flatten image patches")
+                group_providers.append(JpegPatchProvider(cov, size=patch_size))
+            elif '.tif' in cov:
+                group_providers.append(RasterPatchProvider(cov, size=patch_size, flatten=f))
+            else:
+                group_providers.append(MultipleRasterPatchProvider(cov, size=patch_size, flatten=f))
+
+        providers.append(group_providers)
+
+    # training data
+    print("\nMaking dataset for training occurrences")
+    train_data = MultiScalePatchesDatasetCooccurrences(occurrences=train_occ_path, providersA=providers[0], providersB=providers[1])
     n_species = train_data.n_species
-    print(f"input shape = {input_shape}")
+
+    input_shapes = [train_data[0][0].shape, train_data[0][1].shape]
+    print(f"input shape = {input_shapes}")
 
     low_occ_species = train_data.species_counts[train_data.species_counts <= n_max_low_occ].index
     low_occ_species_idx = np.where(np.isin(train_data.species, low_occ_species))[0]
@@ -92,30 +91,34 @@ def train_model(
 
     # validation data
     print("\nMaking dataset for validation occurrences")
-    val_data = PatchesDatasetCooccurrences(occurrences=val_occ_path, providers=providers, species=train_data.species)
+    val_data = MultiScalePatchesDatasetCooccurrences(occurrences=val_occ_path, providersA=providers[0], providersB=providers[1], species=train_data.species)
     
     # data loaders
     train_loader = torch.utils.data.DataLoader(train_data, shuffle=True, batch_size=batch_size, num_workers=8)
     val_loader = torch.utils.data.DataLoader(val_data, shuffle=False, batch_size=batch_size)#, num_workers=4)
 
-    start = time.time()
-    print(next(iter(train_loader)))
-    end = time.time()
-    print(f"TIME = {end-start}")
-
-    # model and optimizer
-    if model == 'MLP':
-        model = MLP(input_shape[0], n_species, 
+    # model 
+    models = []
+    for model, input_shape in zip(model_names, input_shapes):
+        print(model, input_shape)
+        if model == 'MLP':
+            model = MLP(input_shape[0], embed_shape, 
                     n_layers, width, dropout).to(dev)
-    elif model == 'CNN':
-        model = ShallowCNN(input_shape[0], patch_size, n_species,
-                           n_conv_layers, n_filters, width, 
-                           kernel_size, pooling_size, dropout).to(dev)
-    elif model == 'ResNet':
-        if input_shape[0] != 3 and input_shape[0] != 4:
-            exit("ResNet adapted only for 3 or 4 input bands")
-        model = get_resnet(n_species, input_shape[0]).to(dev)
+        elif model == 'CNN':
+            model = ShallowCNN(input_shape[0], patch_size, embed_shape,
+                               n_conv_layers, n_filters, width, 
+                               kernel_size, pooling_size, dropout).to(dev)
+        elif model == 'ResNet':
+            if input_shape[0] != 3 and input_shape[0] != 4:
+                exit("ResNet adapted only for 3 or 4 input bands")
+            model = get_resnet(embed_shape, input_shape[0])
+        models.append(model)
+        
+    model = MultiScaleModel(
+        models[0], models[1], n_species, embed_shape, embed_shape
+    ).to(dev)
 
+    # optimizer
     optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
 
     # loss functions
@@ -131,11 +134,11 @@ def train_model(
         run = wandb.init(
             project=wandb_project, name=run_name, resume="allow", id=wandb_id,
             config={
-                'n_species': n_species, 'n_input_features': input_shape[0], 'pseudoabsences': random_bg,
+                'n_species': n_species, 'n_input_features': input_shapes, 
                 'epochs': n_epochs, 'batch_size': batch_size, 'lr': learning_rate, 
-                'optimizer':'SGD', 'model': model, 'n_layers': n_layers, 'width': width,
+                'optimizer':'SGD', 'model': 'MultiScaleModel', 
                 'loss': loss, 'val_loss': 'BCEloss', 'lambda2': lambda2,
-                'patch_size': patch_size, 'id': wandb_id
+                'patch_sizes': patch_sizes, 'id': id
             }
         )
     
@@ -159,34 +162,17 @@ def train_model(
 
         model.train()
         train_loss_list = []
-        for batch in tqdm(train_loader):
-            if not random_bg:
-                inputs, labels = batch 
-                inputs = inputs.to(torch.float32).to(dev)
-                labels = labels.to(torch.float32).to(dev) 
-                # forward pass
-                y_pred = torch.sigmoid(model(inputs))
-                # y_pred_sigmoid = torch.sigmoid(y_pred)
-                if loss == 'weighted_loss':
-                    train_loss = loss_fn(y_pred, labels, species_weights)
-                else:
-                    train_loss = loss_fn(y_pred, labels)
-            
+        for inputsA, inputsB, labels in tqdm(train_loader):
+            inputsA = inputsA.to(torch.float32).to(dev)
+            inputsB = inputsB.to(torch.float32).to(dev)
+            labels = labels.to(torch.float32).to(dev) 
+
+            # forward pass
+            y_pred = torch.sigmoid(model(inputsA, inputsB))
+            if loss == 'weighted_loss':
+                train_loss = loss_fn(y_pred, labels, species_weights)
             else:
-                inputs, labels, bg_inputs = batch
-                concat_inputs = torch.cat((inputs, bg_inputs), 0).to(torch.float32).to(dev)
-                labels = labels.to(torch.float32).to(dev) 
-                # forward pass
-                output = torch.sigmoid(model(concat_inputs))
-                y_pred = output[0:len(inputs)]
-                bg_pred = output[len(inputs):]
-                # y_pred_sigmoid = torch.sigmoid(y_pred)
-                # bg_pred_sigmoid = torch.sigmoid(bg_pred)
-                if loss == 'weighted_loss':
-                    train_loss = loss_fn(y_pred, labels, species_weights, lambda2, bg_pred)
-                else:
-                    train_loss = loss_fn(y_pred, labels)
-            
+                train_loss = loss_fn(y_pred, labels)
             train_loss_list.append(train_loss.cpu().detach())
 
             # backward pass and weight update
@@ -200,13 +186,13 @@ def train_model(
         # evaluate model on validation set
         model.eval()
         val_loss_list, labels_list, y_pred_list = [], [], []
-        for inputs, labels in tqdm(val_loader):
-            inputs = inputs.to(torch.float32).to(dev)
+        for inputsA, inputsB, labels in tqdm(val_loader):
+            inputsA = inputsA.to(torch.float32).to(dev)
+            inputsB = inputsB.to(torch.float32).to(dev)
             labels = labels.to(torch.float32).to(dev) 
             labels_list.append(labels.cpu().detach().numpy())
 
-            y_pred = torch.sigmoid(model(inputs))
-            # y_pred_sigmoid = torch.sigmoid(y_pred)
+            y_pred = torch.sigmoid(model(inputsA, inputsB))
             y_pred_list.append(y_pred.cpu().detach().numpy())
 
             # validation loss
@@ -247,3 +233,14 @@ def train_model(
                 'val_loss': avg_val_loss,
                 'val_auc': auc
             }, f"models/{run_name}/best_val_auc.pth")  
+
+if __name__ == "__main__": 
+    train_multiscale_model(
+        run_name='0208_multiscale_test',
+        log_wandb=True, wandb_project='spatial_extent_glc23_sample_25',
+        train_occ_path=po_path_sampled_25,
+        val_occ_path=pa_path,
+        patch_sizes=[1, 128],
+        covariates=[[bioclim_dir], [sat_dir]],
+        batch_size=64
+    )

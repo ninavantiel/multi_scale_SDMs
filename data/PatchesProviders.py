@@ -40,13 +40,13 @@ class MetaPatchProvider(PatchProvider):
             self.one_provider = True
         except:
             self.nb_layers = sum([len(provider) for provider in self.providers])
-            self.bands_names = list(itertools.chain.from_iterable([provider.bands_names for provider in self.providers]))            
+            self.bands_names = list(itertools.chain.from_iterable([provider.bands_names for provider in self.providers]))
             self.one_provider = False
             
     def __getitem__(self, item):
-        if self.one_provider: 
+        try:
             patch = self.providers[item]
-        else:
+        except:
             patch = np.concatenate([provider[item] for provider in self.providers])
         return patch
     

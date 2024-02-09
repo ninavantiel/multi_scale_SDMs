@@ -2,6 +2,7 @@ from torch.utils.data import Dataset
 from pathlib import Path
 import pandas as pd
 import numpy as np
+import time
 
 from data.PatchesProviders import MetaPatchProvider
 
@@ -103,21 +104,32 @@ class MultiScalePatchesDatasetCooccurrences(PatchesDatasetCooccurrences):
     def __init__(
         self,
         occurrences,
-        providers,
+        providersA,
+        providersB,
         species=None,
         label_name='speciesId',
         item_columns=['lat','lon','patchID','dayOfYear'],
+        pseudoabsences=None
     ):
-        super().__init__(occurrences, providers, species,label_name, item_columns)
-        self.providers = [MetaPatchProvider(p) for p in self.base_providers]
+        super().__init__(occurrences, providersA, species,label_name, item_columns, pseudoabsences)
+        
+        self.base_providersA = providersA
+        self.providersA = MetaPatchProvider(self.base_providersA)
+        self.base_providersB = providersB
+        self.providersB = MetaPatchProvider(self.base_providersB)
 
     def __getitem__(self, index):
         item = self.items.iloc[index][self.item_columns].to_dict()
-        item_species = self.items[self.label_name]
+        item_species = self.items.iloc[index][self.label_name]
         labels = 1 * np.isin(self.species, item_species)
 
-        patch_list = [provider[item] for provider in self.providers]
-
-        return patch_list, labels
-    
-        # add option to fetch pseudoabsences here later if necessary
+        patchA = self.providersA[item]
+        patchB = self.providersB[item]
+        
+        if self.pseudoabsences is None:
+            return patchA, patchB, labels
+        
+        else:
+            pseudoabsence_item = self.pseudoabsence_items.iloc[index].to_dict()
+            pseudoabsence_patch_list = [provider[pseudoabsence_item] for provider in self.providers]
+            return patchA, patchB, labels, pseudoabsence_patch_list

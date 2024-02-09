@@ -72,26 +72,6 @@ def standardize(root_path:str='sample_data/SatelliteImages/',
         df.to_csv(output, index=False, sep=';')
     return stats['mean'][0], stats['std'][0]
 
-def per_channel_mean_std(root_path, output, ext=['jpg', 'jpeg']):
-    files = get_files_path_recursively(root_path, *ext)
-    dims = len(np.array(Image.open(files[0], mode='r')).shape)
-
-    imgs = []
-    for f in files:
-        img = np.array(Image.open(f, mode='r'))
-        if dims == 3:
-            img = np.transpose(img, (2,0,1))
-        elif  dims == 2:
-            img = np.expand_dims(img, axis=0)
-        imgs.append(img)
-    imgs = np.array(imgs)
-
-    stats = pd.DataFrame({
-        'mean': np.nanmean(imgs,axis=(0,2,3)),
-        'std': np.nanstd(imgs,axis=(0,2,3))
-    })
-    stats.to_csv(output, index=True, sep=';')
-
 def per_channel_mean(root_path, output, ext=['jpg', 'jpeg']):
     files = get_files_path_recursively(root_path, *ext)
     img_shape = np.array(Image.open(files[0], mode='r')).shape 
