@@ -1,8 +1,6 @@
 import os
-import time
 import torch
 import wandb
-import argparse
 import numpy as np
 from tqdm import tqdm
 from sklearn.metrics import roc_auc_score
@@ -10,7 +8,7 @@ from sklearn.metrics import roc_auc_score
 from util import seed_everything
 from data.PatchesProviders import RasterPatchProvider, MultipleRasterPatchProvider, JpegPatchProvider
 from data.Datasets import PatchesDatasetCooccurrences
-from models import MLP, ShallowCNN, get_resnet
+from models import MLP, ShallowCNN, get_resnet, MultiScaleModel
 from losses import weighted_loss, an_full_loss
 
 datadir = 'data/full_data/'
@@ -28,7 +26,7 @@ landcover_path = datadir+'EnvironmentalRasters/LandCover/LandCover_MODIS_Terra-A
 # elevation_path = datadir+'EnvironmentalRasters/Elevation/ASTER_Elevation.tif'
 
 def make_providers(covariate_paths_list, patch_size, flatten):
-    print(f"\nMaking patch providers for covariates: size={patch_size}x{patch_size}, flatten={flatten}")
+    print(f"\nMaking patch providers with size={patch_size}x{patch_size}, flatten={flatten} for covariates:")
     providers = []
     for cov in covariate_paths_list:
         print(f"\t - {cov}")
@@ -43,78 +41,112 @@ def make_providers(covariate_paths_list, patch_size, flatten):
             providers.append(MultipleRasterPatchProvider(cov, size=patch_size, flatten=flatten))
     return providers
 
-def get_model(model_name, n_features, n_species, model_params=None, patch_size=None):
-    if model_name == 'MLP':
-        model = MLP(n_features, n_species, 
-                    model_params['n_layers'], 
-                    model_params['width'], 
-                    model_params['dropout'])
-    elif model_name == 'CNN':
-        model = ShallowCNN(n_features, patch_size, n_species,
-                           model_params['n_conv_layers'], 
-                           model_params['n_filters'], 
-                           model_params['width'], 
-                           model_params['kernel_size'], 
-                           model_params['pooling_size'], 
-                           model_params['dropout'])
-    elif model_name == 'ResNet':
-        if n_features != 3 and n_features != 4:
-            exit("ResNet adapted only for 3 or 4 input bands")
-        model = get_resnet(n_species, n_features)
+def get_model(model_dict):
+    if model_dict['model_name'] == 'MLP':
+        assert all(key in list(model_dict.keys()) for key in [
+            'input_shape', 'output_shape', 'n_layers', 'width', 'dropout'])
+        model = MLP(model_dict['input_shape'][0],
+                    model_dict['output_shape'], 
+                    model_dict['n_layers'], 
+                    model_dict['width'], 
+                    model_dict['dropout'])
+        
+    elif model_dict['model_name'] == 'CNN':
+        assert all(key in list(model_dict.keys()) for key in [
+            'input_shape', 'output_shape', 'patch_size', 'n_conv_layers', 
+            'n_filters', 'width', 'kernel_size', 'pooling_size', 'dropout'
+        ])
+        model = ShallowCNN(model_dict['input_shape'][0],
+                           model_dict['patch_size'], 
+                           model_dict['output_shape'],
+                           model_dict['n_conv_layers'], 
+                           model_dict['n_filters'], 
+                           model_dict['width'], 
+                           model_dict['kernel_size'], 
+                           model_dict['pooling_size'], 
+                           model_dict['dropout'])
+        
+    elif model_dict['model_name'] == 'ResNet':
+        assert all(key in list(model_dict.keys()) for key in [
+            'input_shape', 'output_shape'])
+        assert model_dict['input_shape'][0] == 3 or model_dict['input_shape'][0] == 4
+        model = get_resnet(model_dict['output_shape'], model_dict['input_shape'][0])
     return model
-
 
 def train_model(
     run_name, 
     log_wandb, 
     wandb_project,
+    model_setup,
+    #={'env': {'model_name':'MLP', 'covariates':[bioclim_dir, soil_dir, landcover_path],'patch_size': 1, 'n_layers': 5, 'width': 1280, 'dropout': 0.5}},
     wandb_id=None, 
     train_occ_path=po_path, 
     random_bg_path=None, 
     val_occ_path=pa_path, 
-    # n_max_low_occ=50,
-    patch_size=1, 
-    covariates = [], # path to covariate directories or tif files
-    model='MLP', #choices: 'MLP', 'CNN', 'ResNet'
-    model_params={},
-    # n_layers=5, 
-    # width=1000, 
-    # n_conv_layers=2,
-    # n_filters=[32, 64],
-    # kernel_size=3, 
-    # pooling_size=1, 
-    # dropout=0.0,
-    loss='weighted_loss', #choices: 'weighted_loss', 'an_full_loss'
+    n_max_low_occ=50,
+    embed_shape=None,
+    loss='weighted_loss', 
     lambda2=1,
     n_epochs=150, 
-    batch_size=1024, 
+    batch_size=128, 
     learning_rate=1e-3, 
     seed=42
 ):
+    assert len(model_setup) <= 2
+    multires = (len(model_setup) == 2)
+    if multires: assert random_bg_path is None
+
     seed_everything(seed)
     dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"DEVICE: {dev}")
 
     # covariate patch providers 
-    flatten = True if model == 'MLP' else False
-    providers = make_providers(covariates, patch_size, flatten)
+    providers = []
+    for model_dict in model_setup.values():
+        flatten = True if model_dict['model_name'] == 'MLP' else False 
+        providers.append(make_providers(
+            model_dict['covariates'], model_dict['patch_size'], flatten
+        ))
 
     # training data
-    train_data = PatchesDatasetCooccurrences(occurrences=train_occ_path, providers=providers, pseudoabsences=random_bg_path)
-    n_species = train_data.n_species
-    input_shape = train_data[0][0].shape
-    print(f"input shape = {input_shape}")
+    print("\nMaking dataset for training occurrences")
+    train_data = PatchesDatasetCooccurrences(
+        occurrences=train_occ_path, 
+        providers=providers, 
+        pseudoabsences=random_bg_path, 
+        n_low_occ=n_max_low_occ
+    )
+
+    for i, key in enumerate(model_setup.keys()):
+        model_setup[key]['input_shape'] = train_data[0][0][i].shape
+        if multires:
+            assert embed_shape is not None
+            model_setup[key]['output_shape'] = embed_shape
+        else:
+            model_setup[key]['output_shape'] = train_data.n_species
+    print(f"input shape: {[params['input_shape'] for params in model_setup.values()]}")
 
     # validation data
     print("\nMaking dataset for validation occurrences")
-    val_data = PatchesDatasetCooccurrences(occurrences=val_occ_path, providers=providers, species=train_data.species)
+    val_data = PatchesDatasetCooccurrences(
+        occurrences=val_occ_path, 
+        providers=providers, 
+        species=train_data.species, 
+        n_low_occ=n_max_low_occ
+    )
     
     # data loaders
     train_loader = torch.utils.data.DataLoader(train_data, shuffle=True, batch_size=batch_size, num_workers=8)
     val_loader = torch.utils.data.DataLoader(val_data, shuffle=False, batch_size=batch_size)#, num_workers=4)
 
     # model and optimizer
-    model = get_model(model, input_shape[0], n_species, model_params, patch_size).to(dev)
+    model_list = [get_model(model_dict) for model_dict in model_setup.values()]
+    if multires:
+        model = MultiScaleModel(
+            model_list[0], model_list[1], train_data.n_species, embed_shape, embed_shape
+        ).to(dev)
+    else:
+        model = model_list[0].to(dev)
     optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
 
     # loss functions
@@ -130,14 +162,17 @@ def train_model(
         run = wandb.init(
             project=wandb_project, name=run_name, resume="allow", id=wandb_id,
             config={
-                'n_species': n_species, 'n_input_features': input_shape[0], 'pseudoabsences': random_bg,
-                'epochs': n_epochs, 'batch_size': batch_size, 'lr': learning_rate, 
-                'optimizer':'SGD', 'model': model, 'n_layers': n_layers, 'width': width,
-                'loss': loss, 'val_loss': 'BCEloss', 'lambda2': lambda2,
-                'patch_size': patch_size, 'id': wandb_id
+                'train_data': train_occ_path, 'pseudoabsences': random_bg_path,
+                'val_data': val_occ_path, 'n_species': train_data.n_species, 
+                'n_max_low_occ': n_max_low_occ, 
+                'n_species_low_occ': len(train_data.low_occ_species_idx),
+                'model': model_setup, 'embed_shape': embed_shape, 'epochs': n_epochs, 
+                'batch_size': batch_size, 'lr': learning_rate, 
+                'optimizer':'SGD', 'loss': loss, 'lambda2': lambda2,
+                'val_loss': 'BCEloss', 'id': wandb_id
             }
         )
-    
+        
     # load checkpoint if it exists
     if not os.path.isdir('models/'+run_name): 
         os.mkdir('models/'+run_name)
@@ -152,27 +187,40 @@ def train_model(
         start_epoch = 0
         max_val_auc = 0
 
-     # model training
+    # model training
     for epoch in range(start_epoch, n_epochs):
         print(f"EPOCH {epoch}")
 
         model.train()
         train_loss_list = []
-        for po_inputs, labels, bg_inputs in tqdm(train_loader):
-            if random_bg_path is None:
-                inputs = po_inputs.to(torch.float32).to(dev)
-            else:
-                inputs = torch.cat((inputs, bg_inputs), 0).to(torch.float32).to(dev)
+        for po_inputs, bg_inputs, labels in tqdm(train_loader):
             labels = labels.to(torch.float32).to(dev) 
-            
+
             # forward pass
-            y_pred = torch.sigmoid(model(inputs))
-            if random_bg_path is None:
-                train_loss = loss_fn(y_pred, labels, species_weights)
+            if multires:
+                inputsA = po_inputs[0].to(torch.float32).to(dev)
+                inputsB = po_inputs[1].to(torch.float32).to(dev)
+                y_pred = torch.sigmoid(model(inputsA, inputsB))
+
             else:
-                bg_pred = y_pred[len(po_inputs):]
-                y_pred = y_pred[0:len(po_inputs)]
-                train_loss = loss_fn(y_pred, labels, species_weights, lambda2, bg_pred)
+                if random_bg_path is None:
+                    inputs = po_inputs[0].to(torch.float32).to(dev)
+                else:
+                    inputs = torch.cat((po_inputs[0], bg_inputs[0]), 0).to(torch.float32).to(dev)
+                y_pred = torch.sigmoid(model(inputs))
+            
+            if random_bg_path is None:
+                if loss == 'weighted_loss':
+                    train_loss = loss_fn(y_pred, labels, species_weights)
+                else:
+                    train_loss = loss_fn(y_pred, labels)
+            else:
+                po_pred = y_pred[0:len(po_inputs[0])]
+                bg_pred = y_pred[len(po_inputs[0]):]
+                if loss == 'weighted_loss':
+                    train_loss = loss_fn(po_pred, labels, species_weights, lambda2, bg_pred)
+                else:
+                    train_loss = loss_fn(po_pred, labels, bg_pred)
             train_loss_list.append(train_loss.cpu().detach())
 
             # backward pass and weight update
@@ -186,12 +234,18 @@ def train_model(
         # evaluate model on validation set
         model.eval()
         val_loss_list, labels_list, y_pred_list = [], [], []
-        for inputs, labels in tqdm(val_loader):
-            inputs = inputs.to(torch.float32).to(dev)
+        for inputs, _, labels in tqdm(val_loader):
             labels = labels.to(torch.float32).to(dev) 
             labels_list.append(labels.cpu().detach().numpy())
 
-            y_pred = torch.sigmoid(model(inputs))
+            if multires:
+                inputsA = inputs[0].to(torch.float32).to(dev)
+                inputsB = inputs[1].to(torch.float32).to(dev)
+                y_pred = torch.sigmoid(model(inputsA, inputsB))
+            else:
+                inputs = inputs[0].to(torch.float32).to(dev)
+                y_pred = torch.sigmoid(model(inputs))
+
             y_pred_list.append(y_pred.cpu().detach().numpy())
 
             # validation loss
@@ -201,6 +255,8 @@ def train_model(
         avg_val_loss = np.array(val_loss_list).mean()
         labels = np.concatenate(labels_list)
         y_pred = np.concatenate(y_pred_list)
+
+        # validation AUC
         auc = roc_auc_score(labels, y_pred)
         auc_low_occ = roc_auc_score(labels[:, train_data.low_occ_species_idx], y_pred[:, train_data.low_occ_species_idx])
         print(f"\tVALIDATION LOSS={avg_val_loss} \tVALIDATION AUC={auc}")
@@ -221,7 +277,7 @@ def train_model(
             'val_auc': auc
         }, f"models/{run_name}/last.pth") 
 
-        # save best models 
+        # save best model
         if auc > max_val_auc:
             max_val_auc = auc
             torch.save({

@@ -87,7 +87,8 @@ class PatchesDatasetCooccurrences(Dataset):
             print(f"nb pseudoabsences = {self.pseudoabsence_items.shape[0]}")
 
         self.base_providers = providers
-        self.provider = MetaPatchProvider(self.base_providers)
+        self.providers = [MetaPatchProvider(p) for p in self.base_providers]
+        # MetaPatchProvider(self.base_providers)
 
     def __len__(self):
         return self.items.shape[0]
@@ -96,46 +97,49 @@ class PatchesDatasetCooccurrences(Dataset):
         item = self.items.iloc[index][self.item_columns].to_dict()
         item_species = self.items.iloc[index][self.label_name]
         labels = 1 * np.isin(self.species, item_species)
-        patch = self.provider[item]
+        patches = [p[item] for p in self.providers]
+        #self.provider[item]
 
         if self.pseudoabsences is None:
-            pseudoabsence_patch = None        
+            pseudoabsence_patches = 0        
         else:
             pseudoabsence_item = self.pseudoabsence_items.iloc[index].to_dict()
-            pseudoabsence_patch = self.provider[pseudoabsence_item]
+            pseudoabsence_patches = [p[pseudoabsence_item] for p in self.providers]
+            # pseudoabsence_patch = self.provider[pseudoabsence_item]
         
-        return patch, labels, pseudoabsence_patch
+        return patches, pseudoabsence_patches, labels
 
-class MultiScalePatchesDatasetCooccurrences(PatchesDatasetCooccurrences):
-    def __init__(
-        self,
-        occurrences,
-        providersA,
-        providersB,
-        species=None,
-        label_name='speciesId',
-        item_columns=['lat','lon','patchID','dayOfYear'],
-        pseudoabsences=None
-    ):
-        super().__init__(occurrences, providersA, species,label_name, item_columns, pseudoabsences)
+# class MultiScalePatchesDatasetCooccurrences(PatchesDatasetCooccurrences):
+#     def __init__(
+#         self,
+#         occurrences,
+#         providersA,
+#         providersB,
+#         species=None,
+#         label_name='speciesId',
+#         item_columns=['lat','lon','patchID','dayOfYear'],
+#         pseudoabsences=None,
+#         n_low_occ=50
+#     ):
+#         super().__init__(occurrences, providersA, species, label_name, item_columns, pseudoabsences, n_low_occ)
         
-        self.base_providersA = providersA
-        self.providersA = MetaPatchProvider(self.base_providersA)
-        self.base_providersB = providersB
-        self.providersB = MetaPatchProvider(self.base_providersB)
+#         self.base_providersA = providersA
+#         self.providersA = MetaPatchProvider(self.base_providersA)
+#         self.base_providersB = providersB
+#         self.providersB = MetaPatchProvider(self.base_providersB)
 
-    def __getitem__(self, index):
-        item = self.items.iloc[index][self.item_columns].to_dict()
-        item_species = self.items.iloc[index][self.label_name]
-        labels = 1 * np.isin(self.species, item_species)
+#     def __getitem__(self, index):
+#         item = self.items.iloc[index][self.item_columns].to_dict()
+#         item_species = self.items.iloc[index][self.label_name]
+#         labels = 1 * np.isin(self.species, item_species)
 
-        patchA = self.providersA[item]
-        patchB = self.providersB[item]
+#         patchA = self.providersA[item]
+#         patchB = self.providersB[item]
         
-        if self.pseudoabsences is None:
-            pseudoabsence_patch_list = None
-        else:
-            pseudoabsence_item = self.pseudoabsence_items.iloc[index].to_dict()
-            pseudoabsence_patch_list = [provider[pseudoabsence_item] for provider in self.providers]
+#         if self.pseudoabsences is None:
+#             pseudoabsence_patch_list = 0
+#         else:
+#             pseudoabsence_item = self.pseudoabsence_items.iloc[index].to_dict()
+#             pseudoabsence_patch_list = [provider[pseudoabsence_item] for provider in self.providers]
         
-        return patchA, patchB, labels, pseudoabsence_patch_list
+#         return patchA, patchB, labels, pseudoabsence_patch_list

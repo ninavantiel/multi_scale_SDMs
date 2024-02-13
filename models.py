@@ -88,7 +88,7 @@ def get_resnet(target_size, n_input_channels=4, init_extra_channels=0):
     return model
 
 class MultiScaleModel(nn.Module):
-    def __init__(self, modelA, modelB, target_size, outsizeA, outsizeB, ):
+    def __init__(self, modelA, modelB, target_size, outsizeA, outsizeB):
         super(MultiScaleModel, self).__init__()
         self.modelA = modelA
         self.modelB = modelB

@@ -1,7 +1,38 @@
 from train_model import *
-from train_multiscale_model import *
 
 if __name__ == "__main__": 
+    train_model(
+        run_name='0213_resnet_sat_128x128', 
+        log_wandb=True, 
+        wandb_project='spatial_extent_glc23_encoder',
+        train_occ_path=po_path, 
+        val_occ_path=pa_path, 
+        model_setup={'sat': {
+            'model_name':'ResNet', 'covariates':[sat_dir],
+            'patch_size': 128
+        }},
+        loss='weighted_loss', 
+        lambda2=1,
+        n_epochs=100
+    )
+    
+    # train_model(
+    #     run_name='0213_MLP_env_1x1', 
+    #     log_wandb=True, 
+    #     wandb_project='spatial_extent_glc23_encoder',
+    #     train_occ_path=po_path, 
+    #     val_occ_path=pa_path, 
+    #     model_setup={'env': {
+    #         'model_name':'MLP', 'covariates':[bioclim_dir, soil_dir, landcover_path],
+    #         'patch_size': 1, 'n_layers': 5, 'width': 1280, 'dropout': 0.5
+    #     }},
+    #     loss='weighted_loss', 
+    #     lambda2=1,
+    #     n_epochs=100
+    # )
+
+
+
     # train_multiscale_model(
     #     run_name='0208_multiscale_test',
     #     log_wandb=True, wandb_project='spatial_extent_glc23_sample_25',
@@ -12,18 +43,18 @@ if __name__ == "__main__":
     #     batch_size=64
     # )
   
-    train_model(
-        run_name='0209_MLP_env_16_weighted_loss_1_bs_128_lr_1e-3',
-        log_wandb=True, wandb_project='spatial_extent_glc23_sample_25',
-        train_occ_path=po_path_sampled_25, 
-        val_occ_path=pa_path,
-        patch_size = 16, 
-        covariates=[bioclim_dir, soil_dir, landcover_path],
-        model='MLP', 
-        model_params={'n_layers':5, 'width':1280, 'dropout':0.5},
-        loss = 'weighted_loss', lambda2=1,
-        batch_size=128, learning_rate=1e-3
-    )
+    # train_model(
+    #     run_name='0209_MLP_env_16_weighted_loss_1_bs_128_lr_1e-3',
+    #     log_wandb=True, wandb_project='spatial_extent_glc23_sample_25',
+    #     train_occ_path=po_path_sampled_25, 
+    #     val_occ_path=pa_path,
+    #     patch_size = 16, 
+    #     covariates=[bioclim_dir, soil_dir, landcover_path],
+    #     model='MLP', 
+    #     model_params={'n_layers':5, 'width':1280, 'dropout':0.5},
+    #     loss = 'weighted_loss', lambda2=1,
+    #     batch_size=128, learning_rate=1e-3
+    # )
 
 #   train_model(
 #         run_name='0209_CNN_env_16_weighted_loss_1_bs_128_lr_1e-3',

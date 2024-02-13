@@ -26,7 +26,7 @@ soil_dir = datadir+'EnvironmentalRasters/Soilgrids/'
 human_footprint_path = datadir+'EnvironmentalRasters/HumanFootprint/summarized/HFP2009_WGS84.tif'
 landcover_path = datadir+'EnvironmentalRasters/LandCover/LandCover_MODIS_Terra-Aqua_500m.tif'
 
-run_name = '0208_MLP_env_1_weighted_loss_1/'
+run_name = '0208_MLP_env_1_weighted_loss_1_bs_128_lr_1e-3'
 checkpoint_to_load = 'last'
 train_occ_path=po_path_sampled_25
 random_bg_path=None
@@ -126,7 +126,7 @@ if __name__ == "__main__":
     print('\nEvaluating validation data...')
     model.eval()
     labels_list, y_pred_list = [], []
-    for inputs, labels in tqdm(val_loader):
+    for inputs, labels, _ in tqdm(val_loader):
         inputs = inputs.to(torch.float32).to(dev)
         labels = labels.to(torch.float32).to(dev)
         labels_list.append(labels.cpu().detach().numpy())
