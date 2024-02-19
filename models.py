@@ -68,21 +68,31 @@ class ShallowCNN(nn.Module):
             x = layer(x)
         return x
     
-def get_resnet(target_size, n_input_channels=4, init_extra_channels=0):
-    # get restnet18 model with pretrained weights wtih 3 input channels
-    model = models.resnet18(weights='ResNet18_Weights.IMAGENET1K_V1')
-   
-    # add one input channel for 4th band
-    if n_input_channels == 4:
-        weights = model.conv1.weight.data.clone()
-        model.conv1 = nn.Conv2d(n_input_channels, 64, 
+def get_resnet(target_size, n_input_channels=4, pretrained=True, init_extra_channels=0):
+    if pretrained:
+        assert n_input_channels == 3 or n_input_channels == 4
+        # get restnet18 model with pretrained weights wtih 3 input channels
+        model = models.resnet18(weights='ResNet18_Weights.IMAGENET1K_V1')
+        # add one input channel for 4th band
+        if n_input_channels == 4:
+            weights = model.conv1.weight.data.clone()
+            model.conv1 = nn.Conv2d(n_input_channels, 64, 
+                                    kernel_size=(7,7), stride=(2,2),
+                                    padding=(3,3), bias=False)
+            # assume first three channels are RGB 
+            model.conv1.weight.data[:, :3, :, :] = weights
+            # for weights for 4th channel, use weights for channel "init_extra_channels" (0=R, 1=G, 2=B)
+            model.conv1.weight.data[:, -1, :, :] = weights[:, init_extra_channels, :, :]
+
+    else:
+        # get resnet18 model without pretrained weights
+        model = models.resnet18()
+        # adapt number of input channels in first convolutional layer
+        model.conv1 = nn.Conv2d(n_input_channels, 64,
                                 kernel_size=(7,7), stride=(2,2),
                                 padding=(3,3), bias=False)
-        # assume first three channels are RGB 
-        model.conv1.weight.data[:, :3, :, :] = weights
-        # for weights for 4th channel, use weights for channel "init_extra_channels" (0=R, 1=G, 2=B)
-        model.conv1.weight.data[:, -1, :, :] = weights[:, init_extra_channels, :, :]
     
+    # adapt output size of the last layer
     model.fc = nn.Linear(512, target_size)
 
     return model

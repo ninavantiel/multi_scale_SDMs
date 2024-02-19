@@ -15,6 +15,7 @@ datadir = 'data/full_data/'
 
 po_path = datadir+'Presence_only_occurrences/Presences_only_train_sampled_100_percent_min_1_occurrences.csv'
 po_path_sampled_25 = datadir+'Presence_only_occurrences/Presences_only_train_sampled_25_percent_min_1_occurrences.csv'
+po_path_sampled_50 = datadir+'Presence_only_occurrences/Presences_only_train_sampled_50_percent_min_0_occurrences.csv'
 bg_path = datadir+'Presence_only_occurrences/Pseudoabsence_locations_bioclim_soil.csv'
 pa_path = datadir+'Presence_Absence_surveys/Presences_Absences_train.csv'
 
@@ -41,10 +42,15 @@ def make_providers(covariate_paths_list, patch_size, flatten):
             providers.append(MultipleRasterPatchProvider(cov, size=patch_size, flatten=flatten))
     return providers
 
-def get_model(model_dict):
+def make_model(model_dict):
+    assert 'input_shape' in list(model_dict.keys())
+    assert 'output_shape' in list(model_dict.keys())
+
     if model_dict['model_name'] == 'MLP':
-        assert all(key in list(model_dict.keys()) for key in [
-            'input_shape', 'output_shape', 'n_layers', 'width', 'dropout'])
+        assert 'n_layers' in list(model_dict.keys())
+        assert 'width' in list(model_dict.keys())
+        assert 'dropout' in list(model_dict.keys())
+
         model = MLP(model_dict['input_shape'][0],
                     model_dict['output_shape'], 
                     model_dict['n_layers'], 
@@ -52,10 +58,14 @@ def get_model(model_dict):
                     model_dict['dropout'])
         
     elif model_dict['model_name'] == 'CNN':
-        assert all(key in list(model_dict.keys()) for key in [
-            'input_shape', 'output_shape', 'patch_size', 'n_conv_layers', 
-            'n_filters', 'width', 'kernel_size', 'pooling_size', 'dropout'
-        ])
+        assert 'patch_size' in list(model_dict.keys())
+        assert 'n_conv_layers' in list(model_dict.keys())
+        assert 'n_filters' in list(model_dict.keys())
+        assert 'width' in list(model_dict.keys())
+        assert 'kernel_size' in list(model_dict.keys())
+        assert 'pooling_size' in list(model_dict.keys())
+        assert 'dropout' in list(model_dict.keys())
+
         model = ShallowCNN(model_dict['input_shape'][0],
                            model_dict['patch_size'], 
                            model_dict['output_shape'],
@@ -67,38 +77,29 @@ def get_model(model_dict):
                            model_dict['dropout'])
         
     elif model_dict['model_name'] == 'ResNet':
-        assert all(key in list(model_dict.keys()) for key in [
-            'input_shape', 'output_shape'])
-        assert model_dict['input_shape'][0] == 3 or model_dict['input_shape'][0] == 4
-        model = get_resnet(model_dict['output_shape'], model_dict['input_shape'][0])
+        assert 'pretrained' in list(model_dict.keys())
+
+        model = get_resnet(
+            model_dict['output_shape'], 
+            model_dict['input_shape'][0], 
+            model_dict['pretrained'])
+        
     return model
 
-def train_model(
-    run_name, 
-    log_wandb, 
-    wandb_project,
-    model_setup,
-    #={'env': {'model_name':'MLP', 'covariates':[bioclim_dir, soil_dir, landcover_path],'patch_size': 1, 'n_layers': 5, 'width': 1280, 'dropout': 0.5}},
-    wandb_id=None, 
-    train_occ_path=po_path, 
-    random_bg_path=None, 
-    val_occ_path=pa_path, 
-    n_max_low_occ=50,
-    embed_shape=None,
-    loss='weighted_loss', 
-    lambda2=1,
-    n_epochs=150, 
-    batch_size=128, 
-    learning_rate=1e-3, 
-    seed=42
+def setup_model(
+        model_setup,
+        train_occ_path=po_path,
+        random_bg_path=None,
+        val_occ_path=pa_path,
+        n_max_low_occ=50,
+        embed_shape=None,
+        learning_rate=1e-3,
+        seed=42
 ):
+    seed_everything(seed)
     assert len(model_setup) <= 2
     multires = (len(model_setup) == 2)
     if multires: assert random_bg_path is None
-
-    seed_everything(seed)
-    dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"DEVICE: {dev}")
 
     # covariate patch providers 
     providers = []
@@ -135,19 +136,48 @@ def train_model(
         n_low_occ=n_max_low_occ
     )
     
-    # data loaders
-    train_loader = torch.utils.data.DataLoader(train_data, shuffle=True, batch_size=batch_size, num_workers=8)
-    val_loader = torch.utils.data.DataLoader(val_data, shuffle=False, batch_size=batch_size)#, num_workers=4)
-
     # model and optimizer
-    model_list = [get_model(model_dict) for model_dict in model_setup.values()]
+    model_list = [make_model(model_dict) for model_dict in model_setup.values()]
     if multires:
         model = MultiScaleModel(
             model_list[0], model_list[1], train_data.n_species, embed_shape, embed_shape
-        ).to(dev)
+        )
     else:
-        model = model_list[0].to(dev)
+        model = model_list[0]
     optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
+
+    return train_data, val_data, model, optimizer, multires
+
+def train_model(
+    run_name, 
+    log_wandb, 
+    model_setup,
+    wandb_project=None,
+    wandb_id=None, 
+    train_occ_path=po_path, 
+    random_bg_path=None, 
+    val_occ_path=pa_path, 
+    n_max_low_occ=50,
+    embed_shape=None,
+    loss='weighted_loss', 
+    lambda2=1,
+    n_epochs=150, 
+    batch_size=128, 
+    learning_rate=1e-3, 
+    seed=42
+):
+    seed_everything(seed)
+    dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"DEVICE: {dev}")
+
+    train_data, val_data, model, optimizer, multires = setup_model(
+        model_setup, train_occ_path, random_bg_path, val_occ_path, n_max_low_occ,
+        embed_shape, learning_rate, seed)
+    model = model.to(dev)
+    
+    # data loaders
+    train_loader = torch.utils.data.DataLoader(train_data, shuffle=True, batch_size=batch_size, num_workers=8)
+    val_loader = torch.utils.data.DataLoader(val_data, shuffle=False, batch_size=batch_size)#, num_workers=4)
 
     # loss functions
     loss_fn = eval(loss)

@@ -5,8 +5,8 @@ datadir = 'data/full_data/'
 po_path = datadir+'Presence_only_occurrences/Presences_only_train.csv'
 pa_path = datadir+'Presence_Absence_surveys/Presences_Absences_train.csv'
 
-f = 0.25
-n_min = 1
+f = 0.50
+n_min = 0
 out_path = datadir+f"Presence_only_occurrences/Presences_only_train_sampled_{int(f*100)}_percent_min_{n_min}_occurrences.csv"
 
 pa_df = pd.read_csv(pa_path, sep=";", header='infer', low_memory=False)
