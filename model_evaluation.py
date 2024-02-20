@@ -1,149 +1,71 @@
-import torch
-import numpy as np
-import pandas as pd
-from tqdm import tqdm
-import matplotlib.pyplot as plt
-import seaborn as sns
-
 from sklearn.metrics import roc_auc_score, confusion_matrix
 from sklearn.preprocessing import binarize
+# import matplotlib.pyplot as plt
+# import seaborn as sns
 
-from models import MLP, ShallowCNN, get_resnet
-from losses import an_full_loss, weighted_loss
-from data.Datasets import PatchesDatasetCooccurrences
-from data.PatchesProviders import MultipleRasterPatchProvider, RasterPatchProvider, JpegPatchProvider
-
-datadir = 'data/full_data/'
-
-po_path = datadir+'Presence_only_occurrences/Presences_only_train_sampled_100_percent_min_1_occurrences.csv'
-po_path_sampled_25 = datadir+'Presence_only_occurrences/Presences_only_train_sampled_25_percent_min_1_occurrences.csv'
-bg_path = datadir+'Presence_only_occurrences/Pseudoabsence_locations_bioclim_soil.csv'
-pa_path = datadir+'Presence_Absence_surveys/Presences_Absences_train.csv'
-
-sat_dir = datadir+'SatelliteImages/'
-bioclim_dir = datadir+'EnvironmentalRasters/Climate/BioClimatic_Average_1981-2010/'
-soil_dir = datadir+'EnvironmentalRasters/Soilgrids/'
-human_footprint_path = datadir+'EnvironmentalRasters/HumanFootprint/summarized/HFP2009_WGS84.tif'
-landcover_path = datadir+'EnvironmentalRasters/LandCover/LandCover_MODIS_Terra-Aqua_500m.tif'
-
-run_name = '0208_MLP_env_1_weighted_loss_1_bs_128_lr_1e-3'
-checkpoint_to_load = 'last'
-train_occ_path=po_path_sampled_25
-random_bg_path=None
-val_occ_path=pa_path
-n_max_low_occ=50
-patch_size=1 
-covariates = [bioclim_dir, soil_dir, landcover_path]
-model='MLP'
-n_layers=5 
-width=1280
-n_conv_layers=2
-n_filters=[32, 64]
-kernel_size=3 
-pooling_size=1
-dropout=0.5
-loss='weighted_loss'
-lambda2=1
-n_epochs=150
-batch_size=128
-learning_rate=1e-3
-seed=42
+from train_model import *
 
 def compute_f1(labels, pred):
     tn, fp, fn, tp = confusion_matrix(labels, pred).ravel()
     f1 = tp / (tp + ((fp+fn)/2))
     return f1
 
-if __name__ == "__main__":
+def eval_model(
+    run_name, 
+    model_setup,
+    checkpoint_to_load='last',
+    train_occ_path=po_path,
+    random_bg_path=None,
+    val_occ_path=pa_path,
+    n_max_low_occ=50,
+    embed_shape=None,
+    learning_rate=1e-3,
+    seed=42
+): 
     dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"DEVICE: {dev}")
-
-    flatten = True if model == 'MLP' else False
-    print(f"\nMaking patch providers for covariates: size={patch_size}x{patch_size}, flatten={flatten}")
-    providers = []
-    for cov in covariates:
-        print(f"\t - {cov}")
-        if 'SatelliteImages' in cov:
-            if flatten and patch_size != 1: 
-                exit("jpeg patch provider for satellite images cannot flatten image patches")
-            providers.append(JpegPatchProvider(cov, size=patch_size))
-        elif '.tif' in cov:
-            providers.append(RasterPatchProvider(cov, size=patch_size, flatten=flatten))
-        else:
-            providers.append(MultipleRasterPatchProvider(cov, size=patch_size, flatten=flatten))
     
-    # training data
-    if random_bg_path is None:
-        random_bg = False
-        print("\nMaking dataset for training occurrences")
-        train_data = PatchesDatasetCooccurrences(occurrences=train_occ_path, providers=providers)
-    else:
-        random_bg = True
-        print("\nMaking dataset for training occurrences with random background points")
-        train_data = PatchesDatasetCooccurrences(occurrences=train_occ_path, providers=providers, pseudoabsences=random_bg_path)
+    train_data, val_data, model, optimizer, multires = setup_model(
+        model_setup, train_occ_path, random_bg_path, val_occ_path,
+        n_max_low_occ, embed_shape, learning_rate, seed
+    )
+    model = model.to(dev)
 
-    input_shape = train_data[0][0].shape
-    n_species = train_data.n_species
-    print(f"input shape = {input_shape}")
-
-    low_occ_species = train_data.species_counts[train_data.species_counts <= n_max_low_occ].index
-    low_occ_species_idx = np.where(np.isin(train_data.species, low_occ_species))[0]
-    print(f"nb of species with less than {n_max_low_occ} occurrences = {len(low_occ_species_idx)}")
-
-    # validation data
-    print("\nMaking dataset for validation occurrences")
-    val_data = PatchesDatasetCooccurrences(occurrences=val_occ_path, providers=providers, species=train_data.species)
-    
-    # data loaders
-    train_loader = torch.utils.data.DataLoader(train_data, shuffle=True, batch_size=batch_size, num_workers=8)
-    val_loader = torch.utils.data.DataLoader(val_data, shuffle=False, batch_size=batch_size)#, num_workers=4)
-
-    # model and optimizer
-    if model == 'MLP':
-        model = MLP(input_shape[0], n_species, 
-                    n_layers, width, dropout).to(dev)
-    elif model == 'CNN':
-        model = ShallowCNN(input_shape[0], patch_size, n_species,
-                           n_conv_layers, n_filters, width, 
-                           kernel_size, pooling_size, dropout).to(dev)
-    elif model == 'ResNet':
-        if input_shape[0] != 3 and input_shape[0] != 4:
-            exit("ResNet adapted only for 3 or 4 input bands")
-        model = get_resnet(n_species, input_shape[0]).to(dev)
-
-    optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
-
-    # loss functions
-    loss_fn = eval(loss)
-    species_weights = torch.tensor(train_data.species_weights).to(dev)
-    val_loss_fn = torch.nn.BCELoss()
-
-    print('\nLoading model checkpoint...')
+    print(f"\nLoading model from checkpoint {run_name}")
     checkpoint = torch.load(f"models/{run_name}/{checkpoint_to_load}.pth")
+    print(checkpoint['epoch'], checkpoint['val_auc'])
     model.load_state_dict(checkpoint['state_dict'])
-    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+    optimizer.load_state_dict(checkpoint['optimizer_state_dict']) 
+
+    # data loader
+    val_loader = torch.utils.data.DataLoader(val_data, shuffle=False, batch_size=128)
 
     print('\nEvaluating validation data...')
     model.eval()
     labels_list, y_pred_list = [], []
-    for inputs, labels, _ in tqdm(val_loader):
-        inputs = inputs.to(torch.float32).to(dev)
-        labels = labels.to(torch.float32).to(dev)
-        labels_list.append(labels.cpu().detach().numpy())
-        y_pred = model(inputs)
-        y_pred_sigmoid = torch.sigmoid(y_pred)
-        y_pred_list.append(y_pred_sigmoid.cpu().detach().numpy())
+    for inputs, _, labels in tqdm(val_loader):
+        if multires:
+            inputsA = inputs[0].to(torch.float32).to(dev)
+            inputsB = inputs[1].to(torch.float32).to(dev)
+            y_pred = torch.sigmoid(model(inputsA, inputsB))
+        else:
+            inputs = inputs[0].to(torch.float32).to(dev)
+            y_pred = torch.sigmoid(model(inputs))
+        
+        y_pred_list.append(y_pred.cpu().detach().numpy())
+        labels_list.append(labels)
 
     labels = np.concatenate(labels_list)
     y_pred = np.concatenate(y_pred_list)
 
     auc = roc_auc_score(labels, y_pred)
     print('AUC = ', auc)
-    auc_low_occ = roc_auc_score(labels[:, low_occ_species_idx], y_pred[:, low_occ_species_idx])
+    auc_low_occ = roc_auc_score(labels[:, train_data.low_occ_species_idx], y_pred[:, train_data.low_occ_species_idx])
     print('AUC (low occ) = ', auc_low_occ)
 
-    df = pd.DataFrame(train_data.species_counts, columns=['n_occ']).reset_index()
+    df = pd.DataFrame(train_data.species_counts, columns=['n_occ']).reset_index().rename(columns={'index':'species'})
     df['auc'] = [roc_auc_score(labels[:,i], y_pred[:,i]) for i in range(labels.shape[1])]
+    df.to_csv(f"models/{run_name}/{checkpoint_to_load}_auc.csv", index=False)
 
     f1_scores = {}
     for thresh in np.arange(0.05, 1, 0.05):
@@ -164,19 +86,68 @@ if __name__ == "__main__":
     f.write(f"max F1 = \t{max_f1} (threshold = {threshold})\n")
     f.close()
 
+if __name__ == "__main__":
+    eval_model(
+        run_name = '0205_CNN_env_16x16_weighted_loss_05',
+        model_setup= {'env': {
+            'model_name':'CNN', 
+            'covariates':[bioclim_dir, soil_dir, landcover_path],
+            'patch_size': 16, 
+            'n_conv_layers': 2, 
+            'n_filters': [32, 64],
+            'width': 1000, 
+            'kernel_size': 3,
+            'pooling_size': 1, 
+            'dropout': 0
+        }},
+        train_occ_path=po_path,
+        random_bg_path=bg_path,
+        val_occ_path=pa_path
+    )
+        
+    # eval_model(
+    #     run_name = '0206_MLP_env_4x4_weighted_loss_05',
+    #     model_setup= {'env': {
+    #         'model_name':'MLP', 
+    #         'covariates':[bioclim_dir, soil_dir, landcover_path],
+    #         'patch_size': 4, 
+    #         'n_layers': 5, 
+    #         'width': 1000, 
+    #         'dropout': 0
+    #     }},
+    #     train_occ_path=po_path,
+    #     random_bg_path=bg_path,
+    #     val_occ_path=pa_path
+    # )
+        
+    # eval_model(
+    #     run_name = '0201_MLP_env_1x1_weighted_loss_05_all_PA_species_with_pseudoabsences',
+    #     model_setup= {'env': {
+    #         'model_name':'MLP', 
+    #         'covariates':[bioclim_dir, soil_dir, landcover_path],
+    #         'patch_size': 1, 
+    #         'n_layers': 5, 
+    #         'width': 1000, 
+    #         'dropout': 0
+    #     }},
+    #     train_occ_path=po_path,
+    #     random_bg_path=bg_path,
+    #     val_occ_path=pa_path
+    # )
+
     # plots
-    fig, (ax1, ax2) = plt.subplots(1, 2, layout='constrained', figsize=(8,3))
+    # fig, (ax1, ax2) = plt.subplots(1, 2, layout='constrained', figsize=(8,3))
 
-    mean1 = df.auc.mean()
-    ax1.hist(df.auc)
-    ax1.axvline(mean1, color='orange')
-    ax1.set(xlabel='AUC', ylabel='Counts', title=f"Mean AUC = {mean1:.3f}")
+    # mean1 = df.auc.mean()
+    # ax1.hist(df.auc)
+    # ax1.axvline(mean1, color='orange')
+    # ax1.set(xlabel='AUC', ylabel='Counts', title=f"Mean AUC = {mean1:.3f}")
 
-    sns.boxplot(data=df, x="num_presences_cat", y="auc", ax=ax2)
-    ax2.set(xlabel='Nb occurrences', ylabel='AUC')
+    # sns.boxplot(data=df, x="num_presences_cat", y="auc", ax=ax2)
+    # ax2.set(xlabel='Nb occurrences', ylabel='AUC')
 
-    fig.suptitle(run_name)
-    plt.savefig(f"models/{run_name}/{checkpoint_to_load}_eval.png")
+    # fig.suptitle(run_name)
+    # plt.savefig(f"models/{run_name}/{checkpoint_to_load}_eval.png")
 
 
     # fig = plt.figure(layout='constrained', figsize=(12, 8))

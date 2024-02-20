@@ -2,6 +2,7 @@ import os
 import torch
 import wandb
 import numpy as np
+import pandas as pd
 from tqdm import tqdm
 from sklearn.metrics import roc_auc_score
 
@@ -291,6 +292,10 @@ def train_model(
         auc_low_occ = roc_auc_score(labels[:, train_data.low_occ_species_idx], y_pred[:, train_data.low_occ_species_idx])
         print(f"\tVALIDATION LOSS={avg_val_loss} \tVALIDATION AUC={auc}")
 
+        df = pd.DataFrame(train_data.species_counts, columns=['n_occ']).reset_index().rename(columns={'index':'species'})
+        df['auc'] = [roc_auc_score(labels[:,i], y_pred[:,i]) for i in range(labels.shape[1])]
+        df.to_csv(f"models/{run_name}/last_species_auc.csv", index=False)
+
         if log_wandb:
             wandb.log({
                 "train_loss": avg_train_loss, "val_loss": avg_val_loss, 
@@ -310,6 +315,7 @@ def train_model(
         # save best model
         if auc > max_val_auc:
             max_val_auc = auc
+            df.to_csv(f"models/{run_name}/best_val_auc_species_auc.csv", index=False)
             torch.save({
                 'epoch': epoch,
                 'state_dict': model.state_dict(),

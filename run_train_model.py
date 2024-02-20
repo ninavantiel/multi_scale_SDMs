@@ -14,6 +14,7 @@ if __name__ == "__main__":
             'model_name':'ResNet', 'covariates':[sat_dir],
             'patch_size': 128, 'pretrained': True
         }},
+        embed_shape=512,
         loss='weighted_loss', 
         lambda2=1,
         n_epochs=100
