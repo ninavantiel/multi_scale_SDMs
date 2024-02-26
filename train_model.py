@@ -13,6 +13,7 @@ from models import MLP, ShallowCNN, get_resnet, MultiScaleModel
 from losses import weighted_loss, an_full_loss
 
 datadir = 'data/full_data/'
+modeldir = 'models/'
 
 po_path = datadir+'Presence_only_occurrences/Presences_only_train_sampled_100_percent_min_1_occurrences.csv'
 po_path_sampled_25 = datadir+'Presence_only_occurrences/Presences_only_train_sampled_25_percent_min_1_occurrences.csv'
@@ -66,6 +67,7 @@ def make_model(model_dict):
         assert 'kernel_size' in list(model_dict.keys())
         assert 'pooling_size' in list(model_dict.keys())
         assert 'dropout' in list(model_dict.keys())
+        assert 'pool_only_last' in list(model_dict.keys())
 
         model = ShallowCNN(model_dict['input_shape'][0],
                            model_dict['patch_size'], 
@@ -75,7 +77,8 @@ def make_model(model_dict):
                            model_dict['width'], 
                            model_dict['kernel_size'], 
                            model_dict['pooling_size'], 
-                           model_dict['dropout'])
+                           model_dict['dropout'],
+                           model_dict['pool_only_last'])
         
     elif model_dict['model_name'] == 'ResNet':
         assert 'pretrained' in list(model_dict.keys())
@@ -205,15 +208,15 @@ def train_model(
         )
         
     # load checkpoint if it exists
-    if not os.path.isdir('models/'+run_name): 
-        os.mkdir('models/'+run_name)
-    if os.path.exists(f"models/{run_name}/last.pth"): 
+    if not os.path.isdir(modeldir+run_name): 
+        os.mkdir(modeldir+run_name)
+    if os.path.exists(f"{modeldir}{run_name}/last.pth"): 
         print(f"\nLoading model from checkpoint")
-        checkpoint = torch.load(f"models/{run_name}/last.pth")
+        checkpoint = torch.load(f"{modeldir}{run_name}/last.pth")
         start_epoch = checkpoint['epoch'] + 1
         model.load_state_dict(checkpoint['state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-        max_val_auc = torch.load(f"models/{run_name}/best_val_auc.pth")['val_auc']
+        max_val_auc = torch.load(f"{modeldir}{run_name}/best_val_auc.pth")['val_auc']
     else:
         start_epoch = 0
         max_val_auc = 0
@@ -294,7 +297,7 @@ def train_model(
 
         df = pd.DataFrame(train_data.species_counts, columns=['n_occ']).reset_index().rename(columns={'index':'species'})
         df['auc'] = [roc_auc_score(labels[:,i], y_pred[:,i]) for i in range(labels.shape[1])]
-        df.to_csv(f"models/{run_name}/last_species_auc.csv", index=False)
+        df.to_csv(f"{modeldir}{run_name}/last_species_auc.csv", index=False)
 
         if log_wandb:
             wandb.log({
@@ -310,12 +313,12 @@ def train_model(
             'train_loss': avg_train_loss,
             'val_loss': avg_val_loss,
             'val_auc': auc
-        }, f"models/{run_name}/last.pth") 
+        }, f"{modeldir}/{run_name}/last.pth") 
 
         # save best model
         if auc > max_val_auc:
             max_val_auc = auc
-            df.to_csv(f"models/{run_name}/best_val_auc_species_auc.csv", index=False)
+            df.to_csv(f"{modeldir}{run_name}/best_val_auc_species_auc.csv", index=False)
             torch.save({
                 'epoch': epoch,
                 'state_dict': model.state_dict(),
@@ -323,4 +326,4 @@ def train_model(
                 'train_loss': avg_train_loss,
                 'val_loss': avg_val_loss,
                 'val_auc': auc
-            }, f"models/{run_name}/best_val_auc.pth")  
+            }, f"{modeldir}{run_name}/best_val_auc.pth")  

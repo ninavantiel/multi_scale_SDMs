@@ -1,24 +1,51 @@
 from train_model import *
 
 if __name__ == "__main__": 
-    train_model(
-        run_name='0219_MultiScale_env_1_sat_128x128', 
+  train_model(
+        run_name='0221_resnet_sat_128x128_an_full_loss', 
         log_wandb=True, 
         wandb_project='spatial_extent_glc23_encoder',
         train_occ_path=po_path, 
         val_occ_path=pa_path, 
-        model_setup={'env': {
-            'model_name':'MLP', 'covariates':[bioclim_dir, soil_dir, landcover_path],
-            'patch_size': 1, 'n_layers': 5, 'width': 1280, 'dropout': 0.5
-        }, 'sat': {
+        model_setup={'sat': {
             'model_name':'ResNet', 'covariates':[sat_dir],
             'patch_size': 128, 'pretrained': True
         }},
-        embed_shape=512,
-        loss='weighted_loss', 
-        lambda2=1,
-        n_epochs=100
+        n_epochs=100, 
+        loss='an_full_loss'
     )
+
+#   train_model(
+#         run_name='0221_resnet_sat_128x128_not_pretrained', 
+#         log_wandb=True, 
+#         wandb_project='spatial_extent_glc23_sample50',
+#         train_occ_path=po_path_sampled_50, 
+#         val_occ_path=pa_path, 
+#         model_setup={'sat': {
+#             'model_name':'ResNet', 'covariates':[sat_dir],
+#             'patch_size': 128, 'pretrained': False
+#         }},
+#         n_epochs=100
+#     )
+
+    # train_model(
+    #     run_name='0219_MultiScale_env_1_sat_128x128', 
+    #     log_wandb=True, 
+    #     wandb_project='spatial_extent_glc23_encoder',
+    #     train_occ_path=po_path, 
+    #     val_occ_path=pa_path, 
+    #     model_setup={'env': {
+    #         'model_name':'MLP', 'covariates':[bioclim_dir, soil_dir, landcover_path],
+    #         'patch_size': 1, 'n_layers': 5, 'width': 1280, 'dropout': 0.5
+    #     }, 'sat': {
+    #         'model_name':'ResNet', 'covariates':[sat_dir],
+    #         'patch_size': 128, 'pretrained': True
+    #     }},
+    #     embed_shape=512,
+    #     loss='weighted_loss', 
+    #     lambda2=1,
+    #     n_epochs=100
+    # )
 
     # train_model(
     #     run_name='0216_ResNet_env_128x128', 

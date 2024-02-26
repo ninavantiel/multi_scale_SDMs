@@ -69,11 +69,14 @@ def eval_model(
 
     f1_scores = {}
     for thresh in np.arange(0.05, 1, 0.05):
-        y_pred_bin = binarize(y_pred, threshold=thresh)
-        f1_list = [compute_f1(labels[i,:], y_pred_bin[i,:]) for i in range(labels.shape[0])]
-        f1_mean = np.mean(f1_list)
-        print(thresh, '.... f1 = ', f1_mean)
-        f1_scores[thresh] = f1_mean
+        try:
+            y_pred_bin = binarize(y_pred, threshold=thresh)
+            f1_list = [compute_f1(labels[i,:], y_pred_bin[i,:]) for i in range(labels.shape[0])]
+            f1_mean = np.mean(f1_list)
+            print(thresh, '.... f1 = ', f1_mean)
+            f1_scores[thresh] = f1_mean
+        except:
+            print(f"!! couldn't compute confusion matrix with threshold = {thresh}")
 
     max_f1 = np.max(list(f1_scores.values()))
     threshold = [k for k,v in f1_scores.items() if v == max_f1][0]
@@ -88,52 +91,23 @@ def eval_model(
 
 if __name__ == "__main__":
     eval_model(
-        run_name = '0205_CNN_env_16x16_weighted_loss_05',
+        run_name = '0208_CNN_env_32_weighted_loss_1_bs_128_lr_1e-3',
+        checkpoint_to_load = 'best_val_auc',
         model_setup= {'env': {
             'model_name':'CNN', 
             'covariates':[bioclim_dir, soil_dir, landcover_path],
-            'patch_size': 16, 
+            'patch_size': 32, 
             'n_conv_layers': 2, 
             'n_filters': [32, 64],
-            'width': 1000, 
-            'kernel_size': 3,
-            'pooling_size': 1, 
-            'dropout': 0
+            'width': 1280, 
+            'kernel_size': 3, 
+            'pooling_size': 2, 
+            'dropout': 0.5
         }},
-        train_occ_path=po_path,
-        random_bg_path=bg_path,
+        train_occ_path=po_path_sampled_25,
+        # random_bg_path=None,
         val_occ_path=pa_path
     )
-        
-    # eval_model(
-    #     run_name = '0206_MLP_env_4x4_weighted_loss_05',
-    #     model_setup= {'env': {
-    #         'model_name':'MLP', 
-    #         'covariates':[bioclim_dir, soil_dir, landcover_path],
-    #         'patch_size': 4, 
-    #         'n_layers': 5, 
-    #         'width': 1000, 
-    #         'dropout': 0
-    #     }},
-    #     train_occ_path=po_path,
-    #     random_bg_path=bg_path,
-    #     val_occ_path=pa_path
-    # )
-        
-    # eval_model(
-    #     run_name = '0201_MLP_env_1x1_weighted_loss_05_all_PA_species_with_pseudoabsences',
-    #     model_setup= {'env': {
-    #         'model_name':'MLP', 
-    #         'covariates':[bioclim_dir, soil_dir, landcover_path],
-    #         'patch_size': 1, 
-    #         'n_layers': 5, 
-    #         'width': 1000, 
-    #         'dropout': 0
-    #     }},
-    #     train_occ_path=po_path,
-    #     random_bg_path=bg_path,
-    #     val_occ_path=pa_path
-    # )
 
     # plots
     # fig, (ax1, ax2) = plt.subplots(1, 2, layout='constrained', figsize=(8,3))

@@ -40,7 +40,7 @@ class ShallowCNN(nn.Module):
 
     def __init__(self, input_feature_size, input_patch_size, target_size, 
                  num_conv_layers=2, n_filters=[32,64], fc_width=1280, 
-                 kernel_size=3, pooling_size=2, dropout=0.5):
+                 kernel_size=3, pooling_size=2, dropout=0.5, pool_only_last=False):
         super(ShallowCNN, self).__init__()
 
         self.n_filters = [input_feature_size] + n_filters
@@ -53,9 +53,15 @@ class ShallowCNN(nn.Module):
             layers.append(nn.Conv2d(self.n_filters[i], self.n_filters[i+1], kernel_size=kernel_size))
             layers.append(nn.BatchNorm2d(self.n_filters[i+1]))
             layers.append(nn.ReLU())
-            layers.append(nn.MaxPool2d(kernel_size=pooling_size, stride=pooling_size))
-            patch_size = floor((patch_size - kernel_size + 1) / pooling_size)
-
+            if not pool_only_last:  
+                layers.append(nn.MaxPool2d(kernel_size=pooling_size, stride=pooling_size))
+                patch_size = floor((patch_size - kernel_size + 1) / pooling_size)
+            elif i == num_conv_layers-1:
+                layers.append(nn.MaxPool2d(kernel_size=pooling_size, stride=pooling_size))
+                patch_size = floor((patch_size - kernel_size + 1) / pooling_size)
+            else:
+                patch_size = patch_size - kernel_size + 1
+                
         layers.append(nn.Flatten())
         layers.append(nn.Linear(patch_size*patch_size*self.n_filters[-1], fc_width))
         layers.append(nn.ReLU())
