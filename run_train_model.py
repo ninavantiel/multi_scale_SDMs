@@ -1,19 +1,61 @@
+import argparse
 from train_model import *
 
 if __name__ == "__main__": 
-  train_model(
-        run_name='0221_resnet_sat_128x128_an_full_loss', 
-        log_wandb=True, 
-        wandb_project='spatial_extent_glc23_encoder',
-        train_occ_path=po_path, 
-        val_occ_path=pa_path, 
-        model_setup={'sat': {
-            'model_name':'ResNet', 'covariates':[sat_dir],
-            'patch_size': 128, 'pretrained': True
-        }},
-        n_epochs=100, 
-        loss='an_full_loss'
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-r", "--run_name", required=True, help="Run name")
+    parser.add_argument("-p", "--path_to_config", help="Path to run config file")
+
+    args = parser.parse_args()
+    run_name = args.run_name
+    print(run_name)
+    path_to_config = args.path_to_config
+    if path_to_config is None:
+        path_to_config = f"models/{run_name}/config.txt"
+    print(path_to_config)
+    assert os.path.exists(path_to_config)
+
+    with open(path_to_config) as f:
+        lines = f.readlines()
+        dict = {}
+        for line in lines:
+            line = line.strip().split('=')
+            assert len(line) == 2
+            dict[line[0]] = line[1]
+
+    train_model(
+        run_name, 
+        log_wandb = bool(eval(dict['log_wandb'])), 
+        model_setup = {'env': eval(dict['env_model']), 'sat': eval(dict['sat_model'])},
+        wandb_project = str(eval(dict['wandb_project'])),
+        wandb_id = eval(dict['wandb_id']), 
+        train_occ_path = eval(dict['train_occ_path']), 
+        random_bg_path = eval(dict['random_bg_path']), 
+        val_occ_path = eval(dict['val_occ_path']), 
+        n_max_low_occ = int(eval(dict['n_max_low_occ'])),
+        embed_shape = eval(dict['embed_shape']),
+        loss = eval(dict['loss']), 
+        lambda2 = float(eval(dict['lambda2'])),
+        n_epochs = int(eval(dict['n_epochs'])), 
+        batch_size = int(eval(dict['batch_size'])), 
+        learning_rate = float(eval(dict['learning_rate'])), 
+        seed = int(eval(dict['seed']))
     )
+
+
+#   train_model(
+#         run_name='0221_resnet_sat_128x128_an_full_loss', 
+#         log_wandb=True, 
+#         wandb_project='spatial_extent_glc23_encoder',
+#         train_occ_path=po_path, 
+#         val_occ_path=pa_path, 
+#         model_setup={'sat': {
+#             'model_name':'ResNet', 'covariates':[sat_dir],
+#             'patch_size': 128, 'pretrained': True
+#         }},
+#         n_epochs=100, 
+#         loss='an_full_loss'
+#     )
 
 #   train_model(
 #         run_name='0221_resnet_sat_128x128_not_pretrained', 

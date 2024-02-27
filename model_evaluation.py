@@ -13,7 +13,7 @@ def compute_f1(labels, pred):
 def eval_model(
     run_name, 
     model_setup,
-    checkpoint_to_load='last',
+    list_checkpoint_to_load,
     train_occ_path=po_path,
     random_bg_path=None,
     val_occ_path=pa_path,
@@ -31,80 +31,84 @@ def eval_model(
     )
     model = model.to(dev)
 
-    print(f"\nLoading model from checkpoint {run_name}")
-    checkpoint = torch.load(f"models/{run_name}/{checkpoint_to_load}.pth")
-    print(checkpoint['epoch'], checkpoint['val_auc'])
-    model.load_state_dict(checkpoint['state_dict'])
-    optimizer.load_state_dict(checkpoint['optimizer_state_dict']) 
+    for checkpoint_to_load in list_checkpoint_to_load:
 
-    # data loader
-    val_loader = torch.utils.data.DataLoader(val_data, shuffle=False, batch_size=128)
+        print(f"\nLoading model from checkpoint {run_name}")
+        checkpoint = torch.load(f"models/{run_name}/{checkpoint_to_load}.pth")
+        print(checkpoint['epoch'], checkpoint['val_auc'])
+        model.load_state_dict(checkpoint['state_dict'])
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict']) 
 
-    print('\nEvaluating validation data...')
-    model.eval()
-    labels_list, y_pred_list = [], []
-    for inputs, _, labels in tqdm(val_loader):
-        if multires:
-            inputsA = inputs[0].to(torch.float32).to(dev)
-            inputsB = inputs[1].to(torch.float32).to(dev)
-            y_pred = torch.sigmoid(model(inputsA, inputsB))
-        else:
-            inputs = inputs[0].to(torch.float32).to(dev)
-            y_pred = torch.sigmoid(model(inputs))
-        
-        y_pred_list.append(y_pred.cpu().detach().numpy())
-        labels_list.append(labels)
+        # data loader
+        val_loader = torch.utils.data.DataLoader(val_data, shuffle=False, batch_size=128)
 
-    labels = np.concatenate(labels_list)
-    y_pred = np.concatenate(y_pred_list)
+        print('\nEvaluating validation data...')
+        model.eval()
+        labels_list, y_pred_list = [], []
+        for inputs, _, labels in tqdm(val_loader):
+            if multires:
+                inputsA = inputs[0].to(torch.float32).to(dev)
+                inputsB = inputs[1].to(torch.float32).to(dev)
+                y_pred = torch.sigmoid(model(inputsA, inputsB))
+            else:
+                inputs = inputs[0].to(torch.float32).to(dev)
+                y_pred = torch.sigmoid(model(inputs))
+            
+            y_pred_list.append(y_pred.cpu().detach().numpy())
+            labels_list.append(labels)
 
-    auc = roc_auc_score(labels, y_pred)
-    print('AUC = ', auc)
-    auc_low_occ = roc_auc_score(labels[:, train_data.low_occ_species_idx], y_pred[:, train_data.low_occ_species_idx])
-    print('AUC (low occ) = ', auc_low_occ)
+        labels = np.concatenate(labels_list)
+        y_pred = np.concatenate(y_pred_list)
 
-    df = pd.DataFrame(train_data.species_counts, columns=['n_occ']).reset_index().rename(columns={'index':'species'})
-    df['auc'] = [roc_auc_score(labels[:,i], y_pred[:,i]) for i in range(labels.shape[1])]
-    df.to_csv(f"models/{run_name}/{checkpoint_to_load}_auc.csv", index=False)
+        auc = roc_auc_score(labels, y_pred)
+        print('AUC = ', auc)
+        auc_low_occ = roc_auc_score(labels[:, train_data.low_occ_species_idx], y_pred[:, train_data.low_occ_species_idx])
+        print('AUC (low occ) = ', auc_low_occ)
 
-    f1_scores = {}
-    for thresh in np.arange(0.05, 1, 0.05):
-        try:
-            y_pred_bin = binarize(y_pred, threshold=thresh)
-            f1_list = [compute_f1(labels[i,:], y_pred_bin[i,:]) for i in range(labels.shape[0])]
-            f1_mean = np.mean(f1_list)
-            print(thresh, '.... f1 = ', f1_mean)
-            f1_scores[thresh] = f1_mean
-        except:
-            print(f"!! couldn't compute confusion matrix with threshold = {thresh}")
+        if not os.path.exists(f"models/{run_name}/{checkpoint_to_load}_auc.csv"):
+            df = pd.DataFrame(train_data.species_counts, columns=['n_occ']).reset_index().rename(columns={'index':'species'})
+            df['auc'] = [roc_auc_score(labels[:,i], y_pred[:,i]) for i in range(labels.shape[1])]
+            df.to_csv(f"models/{run_name}/{checkpoint_to_load}_species_auc.csv", index=False)
 
-    max_f1 = np.max(list(f1_scores.values()))
-    threshold = [k for k,v in f1_scores.items() if v == max_f1][0]
+        f1_scores = {}
+        for thresh in np.arange(0.05, 1, 0.05):
+            try:
+                y_pred_bin = binarize(y_pred, threshold=thresh)
+                f1_list = [compute_f1(labels[i,:], y_pred_bin[i,:]) for i in range(labels.shape[0])]
+                f1_mean = np.mean(f1_list)
+                print(thresh, '.... f1 = ', f1_mean)
+                f1_scores[thresh] = f1_mean
+            except:
+                print(f"!! couldn't compute confusion matrix with threshold = {thresh}")
 
-    # text file
-    f = open(f"models/{run_name}/{checkpoint_to_load}_eval.txt", "a")
-    f.write(f"epoch = \t{checkpoint['epoch']}\n")
-    f.write(f"val AUC = \t{auc}\n")
-    f.write(f"val AUC (low occ) = \t{auc_low_occ}\n")
-    f.write(f"max F1 = \t{max_f1} (threshold = {threshold})\n")
-    f.close()
+        max_f1 = np.max(list(f1_scores.values()))
+        threshold = [k for k,v in f1_scores.items() if v == max_f1][0]
+
+        # text file
+        f = open(f"models/{run_name}/{checkpoint_to_load}_eval.txt", "a")
+        f.write(f"epoch = \t{checkpoint['epoch']}\n")
+        f.write(f"val AUC = \t{auc}\n")
+        f.write(f"val AUC (low occ) = \t{auc_low_occ}\n")
+        f.write(f"max F1 = \t{max_f1} (threshold = {threshold})\n")
+        f.close()
 
 if __name__ == "__main__":
     eval_model(
-        run_name = '0208_CNN_env_32_weighted_loss_1_bs_128_lr_1e-3',
-        checkpoint_to_load = 'best_val_auc',
+        run_name = '0131_MLP_env_1x1_an_full_loss_all_PA_species',
+        list_checkpoint_to_load = ['last', 'best_val_auc'],
         model_setup= {'env': {
-            'model_name':'CNN', 
+            'model_name':'MLP', 
             'covariates':[bioclim_dir, soil_dir, landcover_path],
-            'patch_size': 32, 
-            'n_conv_layers': 2, 
-            'n_filters': [32, 64],
-            'width': 1280, 
-            'kernel_size': 3, 
-            'pooling_size': 2, 
-            'dropout': 0.5
+            'patch_size': 1, 
+            'n_layers': 5
+            # 'n_filters': [32, 64],
+            # 'width': 1280, 
+            # 'kernel_size': 3, 
+            # 'pooling_size': 2, 
+            # 'dropout': 0.5,
+            # 'pool_only_last': False
         }},
-        train_occ_path=po_path_sampled_25,
+        train_occ_path=po_path,
         # random_bg_path=None,
         val_occ_path=pa_path
     )
