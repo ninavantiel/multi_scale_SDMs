@@ -1,6 +1,8 @@
 import argparse
 from train_model import *
 
+modeldir = 'models/'
+
 if __name__ == "__main__": 
     parser = argparse.ArgumentParser()
     parser.add_argument("-r", "--run_name", required=True, help="Run name")
@@ -11,7 +13,7 @@ if __name__ == "__main__":
     print(run_name)
     path_to_config = args.path_to_config
     if path_to_config is None:
-        path_to_config = f"models/{run_name}/config.txt"
+        path_to_config = f"{modeldir}/{run_name}/config.txt"
     print(path_to_config)
     assert os.path.exists(path_to_config)
 
@@ -23,10 +25,14 @@ if __name__ == "__main__":
             assert len(line) == 2
             dict[line[0]] = line[1]
 
+    model_setup = {}
+    if dict['env_model'] is not None: model_setup['env'] = eval(dict['env_model'])
+    if dict['sat_model'] is not None: model_setup['sat'] = eval(dict['sat_model'])
+
     train_model(
         run_name, 
         log_wandb = bool(eval(dict['log_wandb'])), 
-        model_setup = {'env': eval(dict['env_model']), 'sat': eval(dict['sat_model'])},
+        model_setup = model_setup,
         wandb_project = str(eval(dict['wandb_project'])),
         wandb_id = eval(dict['wandb_id']), 
         train_occ_path = eval(dict['train_occ_path']), 
