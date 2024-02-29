@@ -103,9 +103,9 @@ def get_resnet(target_size, n_input_channels=4, pretrained=True, init_extra_chan
 
     return model
 
-class MultiScaleModel(nn.Module):
+class MultimodalModel(nn.Module):
     def __init__(self, modelA, modelB, target_size, outsizeA, outsizeB):
-        super(MultiScaleModel, self).__init__()
+        super(MultimodalModel, self).__init__()
         self.modelA = modelA
         self.modelB = modelB
         self.fc = nn.Linear(outsizeA + outsizeB, target_size)
@@ -113,6 +113,46 @@ class MultiScaleModel(nn.Module):
     def forward(self, x1, x2):
         x1 = self.modelA(x1)
         x2 = self.modelB(x2)
+        #?? softmax before concat??
         x = torch.cat((x1, x2), dim=1)
         x = self.fc(x)
         return x
+
+def aspp_branch(in_channels, out_channels, kernel_size, dilation):
+    '''
+    As implemented in:
+    https://github.com/yassouali/pytorch-segmentation/blob/master/models/deeplabv3_plus.py
+    '''
+    # padding = 0 if kernel_size == 1 else dilation
+    # ?? add a 1x1 convolution/linear layer before concatenating the branches
+    return nn.Sequential(
+        nn.Conv2d(in_channels, out_channels, kernel_size, dilation=dilation),#, bias=False),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True))
+
+class ASPP(nn.Module):
+    '''
+    Adapted from:
+    https://github.com/yassouali/pytorch-segmentation/blob/master/models/deeplabv3_plus.py
+    '''
+    def __init__(self, in_channels, in_patch_size, out_channels, kernel_sizes, dilations, target_size):
+        super(ASPP, self).__init__()
+        self.subpatch_sizes = [(d-1)*(k-1) + k for k, d in zip(kernel_sizes, dilations)]
+        self.center_idx = in_patch_size // 2
+
+        self.aspp_branches = [aspp_branch(in_channels, out_channels, k, d) for k, d in zip(kernel_sizes, dilations)]
+        self.linear = nn.Linear(out_channels*len(dilations), target_size)
+
+    def forward(self, x):
+        imins = [int(self.center_idx - (s-1)/2) for s in self.subpatch_sizes]
+        imaxs = [int(self.center_idx + (s-1)/2 + 1) for s in self.subpatch_sizes]
+        x_in = [x[:, :, imin:imax, imin:imax] for imin, imax in zip(imins, imaxs)]
+
+        x = [aspp(xi) for aspp, xi in zip(self.aspp_branches, x_in)]
+        x = torch.cat(x, dim=1).squeeze()
+        x = self.linear(x)
+        return x
+
+    # ?? add a 1x1 convolution/linear layer before concatenating the branches
+    # ?? add an average pooling feature over the whole image
+    # softmax before concat??

@@ -41,7 +41,7 @@ if __name__ == "__main__":
         n_max_low_occ = int(eval(dict['n_max_low_occ'])),
         embed_shape = eval(dict['embed_shape']),
         loss = eval(dict['loss']), 
-        lambda2 = float(eval(dict['lambda2'])),
+        lambda2 = eval(dict['lambda2']),
         n_epochs = int(eval(dict['n_epochs'])), 
         batch_size = int(eval(dict['batch_size'])), 
         learning_rate = float(eval(dict['learning_rate'])), 

@@ -9,7 +9,7 @@ from sklearn.metrics import roc_auc_score
 from util import seed_everything
 from data.PatchesProviders import RasterPatchProvider, MultipleRasterPatchProvider, JpegPatchProvider
 from data.Datasets import PatchesDatasetCooccurrences
-from models import MLP, ShallowCNN, get_resnet, MultiScaleModel
+from models import MLP, ShallowCNN, get_resnet, MultimodalModel, ASPP
 from losses import weighted_loss, an_full_loss
 
 datadir = 'data/full_data/'
@@ -88,6 +88,21 @@ def make_model(model_dict):
             model_dict['input_shape'][0], 
             model_dict['pretrained'])
         
+    elif model_dict['model_name'] == 'ASPP':
+        assert 'patch_size' in list(model_dict.keys())
+        assert 'embed_shape' in list(model_dict.keys())
+        assert 'kernel_sizes' in list(model_dict.keys())
+        assert 'dilations' in list(model_dict.keys())
+        assert len(model_dict['kernel_sizes']) == len(model_dict['dilations'])
+
+        model = ASPP(
+            model_dict['input_shape'][0],
+            model_dict['patch_size'],
+            model_dict['embed_shape'],
+            model_dict['kernel_sizes'],
+            model_dict['dilations'],
+            model_dict['output_shape'])
+        
     return model
 
 def setup_model(
@@ -143,7 +158,7 @@ def setup_model(
     # model and optimizer
     model_list = [make_model(model_dict) for model_dict in model_setup.values()]
     if multires:
-        model = MultiScaleModel(
+        model = MultimodalModel(
             model_list[0], model_list[1], train_data.n_species, embed_shape, embed_shape
         )
     else:
