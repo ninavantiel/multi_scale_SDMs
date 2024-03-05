@@ -45,13 +45,11 @@ def make_providers(covariate_paths_list, patch_size, flatten):
     return providers
 
 def make_model(model_dict, device):
-    assert 'input_shape' in list(model_dict.keys())
-    assert 'output_shape' in list(model_dict.keys())
+    assert {'input_shape', 'output_shape'}.issubset(set(model_dict.keys()))
 
     if model_dict['model_name'] == 'MLP':
-        assert 'n_layers' in list(model_dict.keys())
-        assert 'width' in list(model_dict.keys())
-        assert 'dropout' in list(model_dict.keys())
+        param_names = {'n_layers', 'width', 'dropout'}
+        assert param_names.issubset(set(model_dict.keys()))
 
         model = MLP(model_dict['input_shape'][0],
                     model_dict['output_shape'], 
@@ -60,14 +58,11 @@ def make_model(model_dict, device):
                     model_dict['dropout'])
         
     elif model_dict['model_name'] == 'CNN':
-        assert 'patch_size' in list(model_dict.keys())
-        assert 'n_conv_layers' in list(model_dict.keys())
-        assert 'n_filters' in list(model_dict.keys())
-        assert 'width' in list(model_dict.keys())
-        assert 'kernel_size' in list(model_dict.keys())
-        assert 'pooling_size' in list(model_dict.keys())
-        assert 'dropout' in list(model_dict.keys())
-        assert 'pool_only_last' in list(model_dict.keys())
+        param_names = {
+            'patch_size', 'n_conv_layers', 'n_filters', 'width', 'kernel_size', 
+            'pooling_size', 'dropout', 'pool_only_last'
+        }
+        assert param_names.issubset(set(model_dict.keys()))
 
         model = ShallowCNN(model_dict['input_shape'][0],
                            model_dict['patch_size'], 
@@ -88,28 +83,26 @@ def make_model(model_dict, device):
             model_dict['input_shape'][0], 
             model_dict['pretrained'])
         
-    elif model_dict['model_name'] == 'MultiResolutionCNN':
-        assert 'patch_size' in list(model_dict.keys())
-        assert 'n_conv_layers' in list(model_dict.keys())
-        assert 'n_filters' in list(model_dict.keys())
-        assert 'kernel_size' in list(model_dict.keys())
-        assert 'padding' in list(model_dict.keys())
-        assert 'pooling_size' in list(model_dict.keys())
-        assert 'aspp_dim' in list(model_dict.keys())
-        assert 'aspp_kernel_sizes' in list(model_dict.keys())
-        assert 'aspp_dilations' in list(model_dict.keys())
-        assert 'dropout' in list(model_dict.keys())
-        assert len(model_dict['aspp_kernel_sizes']) == len(model_dict['aspp_dilations'])
+    elif model_dict['model_name'] == 'MultiResolutionModel':
+        param_names = {
+            'patch_size', 'backbone', 'backbone_params', 'aspp_dim', 
+            'aspp_kernel_sizes', 'aspp_dilations', 'dropout'
+        }
+        if model_dict['backbone'] == 'CNN':
+            backbone_param_names = {
+                'n_conv_layers', 'n_filters', 'kernel_size', 'padding', 'pooling_size'
+            }
 
-        model = MultiResolutionCNN(
+        assert param_names.issubset(set(model_dict.keys()))
+        assert len(model_dict['aspp_kernel_sizes']) == len(model_dict['aspp_dilations'])
+        assert backbone_param_names.issubset(set(model_dict['backbone_params'].keys()))
+
+        model = MultiResolutionModel(
             model_dict['input_shape'][0],
             model_dict['patch_size'],
             model_dict['output_shape'],
-            model_dict['n_conv_layers'], 
-            model_dict['n_filters'], 
-            model_dict['kernel_size'], 
-            model_dict['padding'], 
-            model_dict['pooling_size'], 
+            model_dict['backbone'], 
+            model_dict['backbone_params'], 
             model_dict['aspp_dim'],
             model_dict['aspp_kernel_sizes'],
             model_dict['aspp_dilations'],

@@ -154,15 +154,13 @@ class ASPP(nn.Module):
         x = torch.cat(x, dim=1).squeeze()
         return x
     
-class MultiResolutionCNN(nn.Module):
-    def __init__(self, in_channels, in_patch_size, target_size, 
-                 num_conv_layers, n_filters, kernel_size, padding, pooling_size, 
-                 aspp_out_channels, aspp_kernel_sizes, aspp_dilations, dropout, device):
-        super(MultiResolutionCNN, self).__init__()
+class CNN(nn.Module):
+    def __init__(
+            self, in_channels, in_patch_size, num_conv_layers, n_filters, 
+            kernel_size, padding, pooling_size):
+        super(CNN, self).__init__()
         self.n_filters = [in_channels] + n_filters
-        self.target_size = target_size
         patch_size = in_patch_size
-
         layers = []
         for i in range(num_conv_layers):
             layers.append(nn.Conv2d(self.n_filters[i], self.n_filters[i+1], kernel_size=kernel_size, padding=padding))
@@ -170,11 +168,36 @@ class MultiResolutionCNN(nn.Module):
             layers.append(nn.ReLU())
             layers.append(nn.MaxPool2d(kernel_size=pooling_size, stride=pooling_size))
             patch_size = floor((patch_size + 2*padding - kernel_size + 1) / pooling_size)
-        self.backbone_layers = nn.Sequential(*layers)
 
+        self.layers = nn.Sequential(*layers)
+        self.out_patch_size = patch_size
+        self.out_n_channels = self.n_filters[-1]
+
+    def forward(self, x):
+        for layer in self.layers:
+            x = layer(x)
+        return x
+    
+class MultiResolutionModel(nn.Module):
+    def __init__(self, in_channels, in_patch_size, target_size, backbone, backbone_params,
+                 aspp_out_channels, aspp_kernel_sizes, aspp_dilations, dropout, device):
+        super(MultiResolutionModel, self).__init__()        
+        self.target_size = target_size
+
+        if backbone == 'CNN':
+            self.backbone = CNN(in_channels, in_patch_size, 
+                                backbone_params['n_conv_layers'], 
+                                backbone_params['n_filters'], 
+                                backbone_params['kernel_size'], 
+                                backbone_params['padding'], 
+                                backbone_params['pooling_size'])
+        else:
+            print('backbone not supported')
+            return 
+        
         self.aspp_block = ASPP(
-            n_filters[-1], 
-            patch_size, 
+            self.backbone.out_n_channels,
+            self.backbone.out_patch_size, 
             aspp_out_channels, 
             aspp_kernel_sizes, 
             aspp_dilations, 
@@ -183,8 +206,7 @@ class MultiResolutionCNN(nn.Module):
         self.linear = nn.Linear(aspp_out_channels*len(aspp_dilations), target_size)
          
     def forward(self, x):
-        for layer in self.backbone_layers:
-            x = layer(x)
+        x = self.backbone(x)
         x = self.aspp_block(x)
         x = self.linear(x)
         return x
