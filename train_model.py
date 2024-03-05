@@ -9,8 +9,8 @@ from sklearn.metrics import roc_auc_score
 from util import seed_everything
 from data.PatchesProviders import RasterPatchProvider, MultipleRasterPatchProvider, JpegPatchProvider
 from data.Datasets import PatchesDatasetCooccurrences
-from models import MLP, ShallowCNN, get_resnet, MultimodalModel, ASPP
-from losses import weighted_loss, an_full_loss
+from models import *
+from losses import *
 
 datadir = 'data/full_data/'
 modeldir = 'models/'
@@ -44,7 +44,7 @@ def make_providers(covariate_paths_list, patch_size, flatten):
             providers.append(MultipleRasterPatchProvider(cov, size=patch_size, flatten=flatten))
     return providers
 
-def make_model(model_dict):
+def make_model(model_dict, device):
     assert 'input_shape' in list(model_dict.keys())
     assert 'output_shape' in list(model_dict.keys())
 
@@ -88,21 +88,34 @@ def make_model(model_dict):
             model_dict['input_shape'][0], 
             model_dict['pretrained'])
         
-    elif model_dict['model_name'] == 'ASPP':
+    elif model_dict['model_name'] == 'MultiResolutionCNN':
         assert 'patch_size' in list(model_dict.keys())
-        assert 'embed_shape' in list(model_dict.keys())
-        assert 'kernel_sizes' in list(model_dict.keys())
-        assert 'dilations' in list(model_dict.keys())
-        assert len(model_dict['kernel_sizes']) == len(model_dict['dilations'])
+        assert 'n_conv_layers' in list(model_dict.keys())
+        assert 'n_filters' in list(model_dict.keys())
+        assert 'kernel_size' in list(model_dict.keys())
+        assert 'padding' in list(model_dict.keys())
+        assert 'pooling_size' in list(model_dict.keys())
+        assert 'aspp_dim' in list(model_dict.keys())
+        assert 'aspp_kernel_sizes' in list(model_dict.keys())
+        assert 'aspp_dilations' in list(model_dict.keys())
+        assert 'dropout' in list(model_dict.keys())
+        assert len(model_dict['aspp_kernel_sizes']) == len(model_dict['aspp_dilations'])
 
-        model = ASPP(
+        model = MultiResolutionCNN(
             model_dict['input_shape'][0],
             model_dict['patch_size'],
-            model_dict['embed_shape'],
-            model_dict['kernel_sizes'],
-            model_dict['dilations'],
-            model_dict['output_shape'])
-        
+            model_dict['output_shape'],
+            model_dict['n_conv_layers'], 
+            model_dict['n_filters'], 
+            model_dict['kernel_size'], 
+            model_dict['padding'], 
+            model_dict['pooling_size'], 
+            model_dict['aspp_dim'],
+            model_dict['aspp_kernel_sizes'],
+            model_dict['aspp_dilations'],
+            model_dict['dropout'],
+            device)
+    
     return model
 
 def setup_model(
@@ -113,7 +126,8 @@ def setup_model(
         n_max_low_occ=50,
         embed_shape=None,
         learning_rate=1e-3,
-        seed=42
+        seed=42,
+        device=torch.device("cuda" if torch.cuda.is_available() else "cpu")
 ):
     seed_everything(seed)
     assert len(model_setup) <= 2
@@ -156,7 +170,7 @@ def setup_model(
     )
     
     # model and optimizer
-    model_list = [make_model(model_dict) for model_dict in model_setup.values()]
+    model_list = [make_model(model_dict, device) for model_dict in model_setup.values()]
     if multires:
         model = MultimodalModel(
             model_list[0], model_list[1], train_data.n_species, embed_shape, embed_shape
@@ -190,10 +204,17 @@ def train_model(
     print(f"DEVICE: {dev}")
 
     train_data, val_data, model, optimizer, multires = setup_model(
-        model_setup, train_occ_path, random_bg_path, val_occ_path, n_max_low_occ,
-        embed_shape, learning_rate, seed)
+        model_setup=model_setup, 
+        train_occ_path=train_occ_path, 
+        random_bg_path=random_bg_path, 
+        val_occ_path=val_occ_path, 
+        n_max_low_occ=n_max_low_occ,
+        embed_shape=embed_shape, 
+        learning_rate=learning_rate, 
+        seed=seed,
+        device=dev) 
     model = model.to(dev)
-    
+
     # data loaders
     train_loader = torch.utils.data.DataLoader(train_data, shuffle=True, batch_size=batch_size, num_workers=8)
     val_loader = torch.utils.data.DataLoader(val_data, shuffle=False, batch_size=batch_size)#, num_workers=4)

@@ -2,6 +2,7 @@ import torch
 from torch import nn
 from torchvision import models
 from math import floor
+import numpy as np
 
 class MLP(nn.Module):
 
@@ -123,36 +124,67 @@ def aspp_branch(in_channels, out_channels, kernel_size, dilation):
     As implemented in:
     https://github.com/yassouali/pytorch-segmentation/blob/master/models/deeplabv3_plus.py
     '''
-    # padding = 0 if kernel_size == 1 else dilation
-    # ?? add a 1x1 convolution/linear layer before concatenating the branches
     return nn.Sequential(
-        nn.Conv2d(in_channels, out_channels, kernel_size, dilation=dilation),#, bias=False),
-            nn.BatchNorm2d(out_channels),
-            nn.ReLU(inplace=True))
+        nn.Conv2d(in_channels, out_channels, kernel_size, dilation=dilation, bias=False),
+        nn.BatchNorm2d(out_channels),
+        nn.ReLU(inplace=True),
+        nn.Conv2d(out_channels, out_channels, 1),
+        nn.BatchNorm2d(out_channels),
+        nn.ReLU(inplace=True))
 
 class ASPP(nn.Module):
     '''
     Adapted from:
     https://github.com/yassouali/pytorch-segmentation/blob/master/models/deeplabv3_plus.py
     '''
-    def __init__(self, in_channels, in_patch_size, out_channels, kernel_sizes, dilations, target_size):
+    def __init__(self, in_channels, in_patch_size, out_channels, kernel_sizes, dilations, dropout, device):
         super(ASPP, self).__init__()
         self.subpatch_sizes = [(d-1)*(k-1) + k for k, d in zip(kernel_sizes, dilations)]
         self.center_idx = in_patch_size // 2
+        self.imins = [int(self.center_idx - (s-1)/2) for s in self.subpatch_sizes]
+        self.imaxs = [int(self.center_idx + (s-1)/2 + 1) for s in self.subpatch_sizes]
+        assert (np.array(self.imins) >= 0).all()
+        assert (np.array(self.imaxs) < in_patch_size).all()
 
-        self.aspp_branches = [aspp_branch(in_channels, out_channels, k, d) for k, d in zip(kernel_sizes, dilations)]
-        self.linear = nn.Linear(out_channels*len(dilations), target_size)
+        self.aspp_branches = [aspp_branch(in_channels, out_channels, k, d).to(device) for k, d in zip(kernel_sizes, dilations)]
 
     def forward(self, x):
-        imins = [int(self.center_idx - (s-1)/2) for s in self.subpatch_sizes]
-        imaxs = [int(self.center_idx + (s-1)/2 + 1) for s in self.subpatch_sizes]
-        x_in = [x[:, :, imin:imax, imin:imax] for imin, imax in zip(imins, imaxs)]
-
+        x_in = [x[:, :, imin:imax, imin:imax] for imin, imax in zip(self.imins, self.imaxs)]
         x = [aspp(xi) for aspp, xi in zip(self.aspp_branches, x_in)]
         x = torch.cat(x, dim=1).squeeze()
+        return x
+    
+class MultiResolutionCNN(nn.Module):
+    def __init__(self, in_channels, in_patch_size, target_size, 
+                 num_conv_layers, n_filters, kernel_size, padding, pooling_size, 
+                 aspp_out_channels, aspp_kernel_sizes, aspp_dilations, dropout, device):
+        super(MultiResolutionCNN, self).__init__()
+        self.n_filters = [in_channels] + n_filters
+        self.target_size = target_size
+        patch_size = in_patch_size
+
+        layers = []
+        for i in range(num_conv_layers):
+            layers.append(nn.Conv2d(self.n_filters[i], self.n_filters[i+1], kernel_size=kernel_size, padding=padding))
+            layers.append(nn.BatchNorm2d(self.n_filters[i+1]))
+            layers.append(nn.ReLU())
+            layers.append(nn.MaxPool2d(kernel_size=pooling_size, stride=pooling_size))
+            patch_size = floor((patch_size + 2*padding - kernel_size + 1) / pooling_size)
+        self.backbone_layers = nn.Sequential(*layers)
+
+        self.aspp_block = ASPP(
+            n_filters[-1], 
+            patch_size, 
+            aspp_out_channels, 
+            aspp_kernel_sizes, 
+            aspp_dilations, 
+            dropout, 
+            device)
+        self.linear = nn.Linear(aspp_out_channels*len(aspp_dilations), target_size)
+         
+    def forward(self, x):
+        for layer in self.backbone_layers:
+            x = layer(x)
+        x = self.aspp_block(x)
         x = self.linear(x)
         return x
-
-    # ?? add a 1x1 convolution/linear layer before concatenating the branches
-    # ?? add an average pooling feature over the whole image
-    # softmax before concat??

@@ -94,20 +94,21 @@ def eval_model(
 
 if __name__ == "__main__":
     eval_model(
-        run_name = '0131_MLP_env_1x1_an_full_loss_all_PA_species',
+        run_name = '0229_sat128_cnn_an_loss',
         list_checkpoint_to_load = ['last', 'best_val_auc'],
-        model_setup= {'env': {
-            'model_name':'MLP', 
-            'covariates':[bioclim_dir, soil_dir, landcover_path],
-            'patch_size': 1, 
-            'n_layers': 5
-            # 'n_filters': [32, 64],
-            # 'width': 1280, 
-            # 'kernel_size': 3, 
-            # 'pooling_size': 2, 
-            # 'dropout': 0.5,
-            # 'pool_only_last': False
+        model_setup= {'sat': {
+            'model_name':'CNN', 
+            'covariates':[sat_dir], 
+            'patch_size': 128, 
+            'n_conv_layers': 4, 
+            'n_filters': [32,32,64,64], 
+            'width': 1280, 
+            'kernel_size': 3, 
+            'pooling_size': 2, 
+            'dropout': 0.5, 
+            'pool_only_last': False
         }},
+        # embed_shape=512,
         train_occ_path=po_path,
         # random_bg_path=None,
         val_occ_path=pa_path
