@@ -41,7 +41,7 @@ class ShallowCNN(nn.Module):
 
     def __init__(self, input_feature_size, input_patch_size, target_size, 
                  num_conv_layers=2, n_filters=[32,64], fc_width=1280, 
-                 kernel_size=3, pooling_size=2, dropout=0.5, pool_only_last=False):
+                 kernel_size=3, padding=0, pooling_size=2, dropout=0.5, pool_only_last=False):
         super(ShallowCNN, self).__init__()
 
         self.n_filters = [input_feature_size] + n_filters
@@ -51,7 +51,7 @@ class ShallowCNN(nn.Module):
         layers = []
 
         for i in range(num_conv_layers):
-            layers.append(nn.Conv2d(self.n_filters[i], self.n_filters[i+1], kernel_size=kernel_size))
+            layers.append(nn.Conv2d(self.n_filters[i], self.n_filters[i+1], kernel_size=kernel_size, padding=padding))
             layers.append(nn.BatchNorm2d(self.n_filters[i+1]))
             layers.append(nn.ReLU())
             if not pool_only_last:  
@@ -119,18 +119,19 @@ class MultimodalModel(nn.Module):
         x = self.fc(x)
         return x
 
-def aspp_branch(in_channels, out_channels, kernel_size, dilation):
+def aspp_branch(in_channels, out_channels, kernel_size, dilation, dropout):
     '''
     As implemented in:
     https://github.com/yassouali/pytorch-segmentation/blob/master/models/deeplabv3_plus.py
     '''
     return nn.Sequential(
-        nn.Conv2d(in_channels, out_channels, kernel_size, dilation=dilation, bias=False),
+        nn.Conv2d(in_channels, out_channels, kernel_size, dilation=dilation),
+        nn.ReLU(),
+        nn.Dropout(p=dropout),
         nn.BatchNorm2d(out_channels),
-        nn.ReLU(inplace=True),
         nn.Conv2d(out_channels, out_channels, 1),
-        nn.BatchNorm2d(out_channels),
-        nn.ReLU(inplace=True))
+        nn.ReLU(),
+        nn.Dropout(p=dropout))
 
 class ASPP(nn.Module):
     '''
@@ -144,9 +145,9 @@ class ASPP(nn.Module):
         self.imins = [int(self.center_idx - (s-1)/2) for s in self.subpatch_sizes]
         self.imaxs = [int(self.center_idx + (s-1)/2 + 1) for s in self.subpatch_sizes]
         assert (np.array(self.imins) >= 0).all()
-        assert (np.array(self.imaxs) < in_patch_size).all()
+        assert (np.array(self.imaxs) <= in_patch_size).all()
 
-        self.aspp_branches = [aspp_branch(in_channels, out_channels, k, d).to(device) for k, d in zip(kernel_sizes, dilations)]
+        self.aspp_branches = [aspp_branch(in_channels, out_channels, k, d, dropout).to(device) for k, d in zip(kernel_sizes, dilations)]
 
     def forward(self, x):
         x_in = [x[:, :, imin:imax, imin:imax] for imin, imax in zip(self.imins, self.imaxs)]
@@ -156,22 +157,22 @@ class ASPP(nn.Module):
     
 class CNN(nn.Module):
     def __init__(
-            self, in_channels, in_patch_size, num_conv_layers, n_filters, 
-            kernel_size, padding, pooling_size):
+            self, in_channels, in_patch_size, n_filters, kernel_sizes, 
+            paddings, pooling_sizes, dropout):
         super(CNN, self).__init__()
-        self.n_filters = [in_channels] + n_filters
         patch_size = in_patch_size
         layers = []
-        for i in range(num_conv_layers):
-            layers.append(nn.Conv2d(self.n_filters[i], self.n_filters[i+1], kernel_size=kernel_size, padding=padding))
-            layers.append(nn.BatchNorm2d(self.n_filters[i+1]))
+        for f_in, f, k, p, pool in zip([in_channels]+n_filters[:-1], n_filters, kernel_sizes, paddings, pooling_sizes):
+            layers.append(nn.Conv2d(f_in, f, kernel_size=k, padding=p))
             layers.append(nn.ReLU())
-            layers.append(nn.MaxPool2d(kernel_size=pooling_size, stride=pooling_size))
-            patch_size = floor((patch_size + 2*padding - kernel_size + 1) / pooling_size)
+            layers.append(nn.Dropout(p=dropout))
+            layers.append(nn.BatchNorm2d(f))
+            layers.append(nn.MaxPool2d(kernel_size=pool, stride=pool))
+            patch_size = floor((patch_size + 2*p - k + 1) / pool)
 
         self.layers = nn.Sequential(*layers)
         self.out_patch_size = patch_size
-        self.out_n_channels = self.n_filters[-1]
+        self.out_n_channels = n_filters[-1]
 
     def forward(self, x):
         for layer in self.layers:
@@ -185,12 +186,15 @@ class MultiResolutionModel(nn.Module):
         self.target_size = target_size
 
         if backbone == 'CNN':
-            self.backbone = CNN(in_channels, in_patch_size, 
-                                backbone_params['n_conv_layers'], 
-                                backbone_params['n_filters'], 
-                                backbone_params['kernel_size'], 
-                                backbone_params['padding'], 
-                                backbone_params['pooling_size'])
+            self.backbone = CNN(
+                in_channels, 
+                in_patch_size, 
+                backbone_params['n_filters'], 
+                backbone_params['kernel_sizes'], 
+                backbone_params['paddings'], 
+                backbone_params['pooling_sizes'], 
+                dropout)
+        
         else:
             print('backbone not supported')
             return 

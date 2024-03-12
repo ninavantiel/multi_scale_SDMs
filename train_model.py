@@ -60,7 +60,7 @@ def make_model(model_dict, device):
     elif model_dict['model_name'] == 'CNN':
         param_names = {
             'patch_size', 'n_conv_layers', 'n_filters', 'width', 'kernel_size', 
-            'pooling_size', 'dropout', 'pool_only_last'
+            'padding', 'pooling_size', 'dropout', 'pool_only_last'
         }
         assert param_names.issubset(set(model_dict.keys()))
 
@@ -71,6 +71,7 @@ def make_model(model_dict, device):
                            model_dict['n_filters'], 
                            model_dict['width'], 
                            model_dict['kernel_size'], 
+                           model_dict['padding'],
                            model_dict['pooling_size'], 
                            model_dict['dropout'],
                            model_dict['pool_only_last'])
@@ -88,14 +89,14 @@ def make_model(model_dict, device):
             'patch_size', 'backbone', 'backbone_params', 'aspp_dim', 
             'aspp_kernel_sizes', 'aspp_dilations', 'dropout'
         }
-        if model_dict['backbone'] == 'CNN':
-            backbone_param_names = {
-                'n_conv_layers', 'n_filters', 'kernel_size', 'padding', 'pooling_size'
-            }
-
         assert param_names.issubset(set(model_dict.keys()))
         assert len(model_dict['aspp_kernel_sizes']) == len(model_dict['aspp_dilations'])
-        assert backbone_param_names.issubset(set(model_dict['backbone_params'].keys()))
+
+        if model_dict['backbone'] == 'CNN':
+            backbone_param_names = {
+                'n_filters', 'kernel_sizes', 'paddings', 'pooling_sizes'
+            }
+            assert backbone_param_names.issubset(set(model_dict['backbone_params'].keys()))
 
         model = MultiResolutionModel(
             model_dict['input_shape'][0],
@@ -190,6 +191,8 @@ def train_model(
     n_epochs=150, 
     batch_size=128, 
     learning_rate=1e-3, 
+    num_workers_train=8,
+    num_workers_val=4,
     seed=42
 ):
     seed_everything(seed)
@@ -209,8 +212,8 @@ def train_model(
     model = model.to(dev)
 
     # data loaders
-    train_loader = torch.utils.data.DataLoader(train_data, shuffle=True, batch_size=batch_size, num_workers=8)
-    val_loader = torch.utils.data.DataLoader(val_data, shuffle=False, batch_size=batch_size)#, num_workers=4)
+    train_loader = torch.utils.data.DataLoader(train_data, shuffle=True, batch_size=batch_size, num_workers=num_workers_train)
+    val_loader = torch.utils.data.DataLoader(val_data, shuffle=False, batch_size=batch_size, num_workers=num_workers_val)
 
     # loss functions
     loss_fn = eval(loss)
