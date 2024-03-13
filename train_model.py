@@ -252,7 +252,7 @@ def train_model(
     else:
         start_epoch = 0
         max_val_auc = 0
-
+    
     # model training
     for epoch in range(start_epoch, n_epochs):
         print(f"EPOCH {epoch}")

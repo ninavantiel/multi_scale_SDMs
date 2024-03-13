@@ -56,10 +56,10 @@ class ShallowCNN(nn.Module):
             layers.append(nn.ReLU())
             if not pool_only_last:  
                 layers.append(nn.MaxPool2d(kernel_size=pooling_size, stride=pooling_size))
-                patch_size = floor((patch_size - kernel_size + 1) / pooling_size)
+                patch_size = floor((patch_size - kernel_size + 2*padding + 1) / pooling_size)
             elif i == num_conv_layers-1:
                 layers.append(nn.MaxPool2d(kernel_size=pooling_size, stride=pooling_size))
-                patch_size = floor((patch_size - kernel_size + 1) / pooling_size)
+                patch_size = floor((patch_size - kernel_size + 2*padding + 1) / pooling_size)
             else:
                 patch_size = patch_size - kernel_size + 1
                 
@@ -126,12 +126,8 @@ def aspp_branch(in_channels, out_channels, kernel_size, dilation, dropout):
     '''
     return nn.Sequential(
         nn.Conv2d(in_channels, out_channels, kernel_size, dilation=dilation),
-        nn.ReLU(),
-        nn.Dropout(p=dropout),
         nn.BatchNorm2d(out_channels),
-        nn.Conv2d(out_channels, out_channels, 1),
-        nn.ReLU(),
-        nn.Dropout(p=dropout))
+        nn.ReLU())
 
 class ASPP(nn.Module):
     '''
@@ -158,15 +154,15 @@ class ASPP(nn.Module):
 class CNN(nn.Module):
     def __init__(
             self, in_channels, in_patch_size, n_filters, kernel_sizes, 
-            paddings, pooling_sizes, dropout):
+            paddings, pooling_sizes): #, dropout):
         super(CNN, self).__init__()
         patch_size = in_patch_size
         layers = []
         for f_in, f, k, p, pool in zip([in_channels]+n_filters[:-1], n_filters, kernel_sizes, paddings, pooling_sizes):
             layers.append(nn.Conv2d(f_in, f, kernel_size=k, padding=p))
-            layers.append(nn.ReLU())
-            layers.append(nn.Dropout(p=dropout))
             layers.append(nn.BatchNorm2d(f))
+            layers.append(nn.ReLU())
+            # layers.append(nn.Dropout(p=dropout))
             layers.append(nn.MaxPool2d(kernel_size=pool, stride=pool))
             patch_size = floor((patch_size + 2*p - k + 1) / pool)
 
