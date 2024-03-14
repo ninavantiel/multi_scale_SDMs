@@ -101,7 +101,6 @@ def get_resnet(target_size, n_input_channels=4, pretrained=True, init_extra_chan
     
     # adapt output size of the last layer
     model.fc = nn.Linear(512, target_size)
-
     return model
 
 class MultimodalModel(nn.Module):
@@ -114,27 +113,16 @@ class MultimodalModel(nn.Module):
     def forward(self, x1, x2):
         x1 = self.modelA(x1)
         x2 = self.modelB(x2)
-        #?? softmax before concat??
         x = torch.cat((x1, x2), dim=1)
         x = self.fc(x)
         return x
-
-def aspp_branch(in_channels, out_channels, kernel_size, dilation, dropout):
-    '''
-    As implemented in:
-    https://github.com/yassouali/pytorch-segmentation/blob/master/models/deeplabv3_plus.py
-    '''
-    return nn.Sequential(
-        nn.Conv2d(in_channels, out_channels, kernel_size, dilation=dilation),
-        nn.BatchNorm2d(out_channels),
-        nn.ReLU())
 
 class ASPP(nn.Module):
     '''
     Adapted from:
     https://github.com/yassouali/pytorch-segmentation/blob/master/models/deeplabv3_plus.py
     '''
-    def __init__(self, in_channels, in_patch_size, out_channels, kernel_sizes, dilations, dropout, device):
+    def __init__(self, in_channels, in_patch_size, out_channels, kernel_sizes, dilations, device):
         super(ASPP, self).__init__()
         self.subpatch_sizes = [(d-1)*(k-1) + k for k, d in zip(kernel_sizes, dilations)]
         self.center_idx = in_patch_size // 2
@@ -143,7 +131,9 @@ class ASPP(nn.Module):
         assert (np.array(self.imins) >= 0).all()
         assert (np.array(self.imaxs) <= in_patch_size).all()
 
-        self.aspp_branches = [aspp_branch(in_channels, out_channels, k, d, dropout).to(device) for k, d in zip(kernel_sizes, dilations)]
+        self.aspp_branches = [nn.Sequential(
+            nn.Conv2d(in_channels, out_channels, k, dilation=d), nn.ReLU()
+        ).to(device) for k, d in zip(kernel_sizes, dilations)]
 
     def forward(self, x):
         x_in = [x[:, :, imin:imax, imin:imax] for imin, imax in zip(self.imins, self.imaxs)]
@@ -154,7 +144,7 @@ class ASPP(nn.Module):
 class CNN(nn.Module):
     def __init__(
             self, in_channels, in_patch_size, n_filters, kernel_sizes, 
-            paddings, pooling_sizes): #, dropout):
+            paddings, pooling_sizes): 
         super(CNN, self).__init__()
         patch_size = in_patch_size
         layers = []
@@ -162,7 +152,6 @@ class CNN(nn.Module):
             layers.append(nn.Conv2d(f_in, f, kernel_size=k, padding=p))
             layers.append(nn.BatchNorm2d(f))
             layers.append(nn.ReLU())
-            # layers.append(nn.Dropout(p=dropout))
             layers.append(nn.MaxPool2d(kernel_size=pool, stride=pool))
             patch_size = floor((patch_size + 2*p - k + 1) / pool)
 
@@ -177,7 +166,7 @@ class CNN(nn.Module):
     
 class MultiResolutionModel(nn.Module):
     def __init__(self, in_channels, in_patch_size, target_size, backbone, backbone_params,
-                 aspp_out_channels, aspp_kernel_sizes, aspp_dilations, dropout, device):
+                 aspp_out_channels, aspp_kernel_sizes, aspp_dilations, device):
         super(MultiResolutionModel, self).__init__()        
         self.target_size = target_size
 
@@ -188,8 +177,7 @@ class MultiResolutionModel(nn.Module):
                 backbone_params['n_filters'], 
                 backbone_params['kernel_sizes'], 
                 backbone_params['paddings'], 
-                backbone_params['pooling_sizes'], 
-                dropout)
+                backbone_params['pooling_sizes']) 
         
         else:
             print('backbone not supported')
@@ -201,7 +189,6 @@ class MultiResolutionModel(nn.Module):
             aspp_out_channels, 
             aspp_kernel_sizes, 
             aspp_dilations, 
-            dropout, 
             device)
         self.linear = nn.Linear(aspp_out_channels*len(aspp_dilations), target_size)
          

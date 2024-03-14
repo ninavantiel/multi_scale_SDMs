@@ -63,6 +63,7 @@ def make_model(model_dict, device):
             'padding', 'pooling_size', 'dropout', 'pool_only_last'
         }
         assert param_names.issubset(set(model_dict.keys()))
+        assert model_dict['n_conv_layers'] == len(model_dict['n_filters'])
 
         model = ShallowCNN(model_dict['input_shape'][0],
                            model_dict['patch_size'], 
@@ -87,7 +88,7 @@ def make_model(model_dict, device):
     elif model_dict['model_name'] == 'MultiResolutionModel':
         param_names = {
             'patch_size', 'backbone', 'backbone_params', 'aspp_dim', 
-            'aspp_kernel_sizes', 'aspp_dilations', 'dropout'
+            'aspp_kernel_sizes', 'aspp_dilations'
         }
         assert param_names.issubset(set(model_dict.keys()))
         assert len(model_dict['aspp_kernel_sizes']) == len(model_dict['aspp_dilations'])
@@ -107,7 +108,6 @@ def make_model(model_dict, device):
             model_dict['aspp_dim'],
             model_dict['aspp_kernel_sizes'],
             model_dict['aspp_dilations'],
-            model_dict['dropout'],
             device)
     
     return model
