@@ -86,28 +86,20 @@ def make_model(model_dict, device):
             model_dict['pretrained'])
         
     elif model_dict['model_name'] == 'MultiResolutionModel':
-        param_names = {
-            'patch_size', 'backbone', 'backbone_params', 'aspp_dim', 
-            'aspp_kernel_sizes', 'aspp_dilations'
-        }
+        param_names = {'patch_size', 'backbone_params', 'aspp_params'}
         assert param_names.issubset(set(model_dict.keys()))
-        assert len(model_dict['aspp_kernel_sizes']) == len(model_dict['aspp_dilations'])
 
-        if model_dict['backbone'] == 'CNN':
-            backbone_param_names = {
-                'n_filters', 'kernel_sizes', 'paddings', 'pooling_sizes'
-            }
-            assert backbone_param_names.issubset(set(model_dict['backbone_params'].keys()))
+        backbone_param_names = {'n_filters', 'kernel_sizes', 'paddings', 'pooling_sizes'}
+        assert backbone_param_names.issubset(set(model_dict['backbone_params'].keys()))
+        aspp_param_names = {'out_channels', 'kernel_sizes'}
+        assert aspp_param_names.issubset(set(model_dict['aspp_params'].keys()))
 
         model = MultiResolutionModel(
             model_dict['input_shape'][0],
             model_dict['patch_size'],
             model_dict['output_shape'],
-            model_dict['backbone'], 
             model_dict['backbone_params'], 
-            model_dict['aspp_dim'],
-            model_dict['aspp_kernel_sizes'],
-            model_dict['aspp_dilations'],
+            model_dict['aspp_params'],
             device)
     
     return model
@@ -125,8 +117,8 @@ def setup_model(
 ):
     seed_everything(seed)
     assert len(model_setup) <= 2
-    multires = (len(model_setup) == 2)
-    if multires: assert random_bg_path is None
+    multimodal = (len(model_setup) == 2)
+    if multimodal: assert random_bg_path is None
 
     # covariate patch providers 
     providers = []
@@ -147,7 +139,7 @@ def setup_model(
 
     for i, key in enumerate(model_setup.keys()):
         model_setup[key]['input_shape'] = train_data[0][0][i].shape
-        if multires:
+        if multimodal:
             assert embed_shape is not None
             model_setup[key]['output_shape'] = embed_shape
         else:
@@ -165,7 +157,7 @@ def setup_model(
     
     # model and optimizer
     model_list = [make_model(model_dict, device) for model_dict in model_setup.values()]
-    if multires:
+    if multimodal:
         model = MultimodalModel(
             model_list[0], model_list[1], train_data.n_species, embed_shape, embed_shape
         )
@@ -173,7 +165,7 @@ def setup_model(
         model = model_list[0]
     optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
 
-    return train_data, val_data, model, optimizer, multires
+    return train_data, val_data, model, optimizer, multimodal
 
 def train_model(
     run_name, 
@@ -199,7 +191,7 @@ def train_model(
     dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"DEVICE: {dev}")
 
-    train_data, val_data, model, optimizer, multires = setup_model(
+    train_data, val_data, model, optimizer, multimodal = setup_model(
         model_setup=model_setup, 
         train_occ_path=train_occ_path, 
         random_bg_path=random_bg_path, 
@@ -263,7 +255,7 @@ def train_model(
             labels = labels.to(torch.float32).to(dev) 
 
             # forward pass
-            if multires:
+            if multimodal:
                 inputsA = po_inputs[0].to(torch.float32).to(dev)
                 inputsB = po_inputs[1].to(torch.float32).to(dev)
                 y_pred = torch.sigmoid(model(inputsA, inputsB))
@@ -304,7 +296,7 @@ def train_model(
             labels = labels.to(torch.float32).to(dev) 
             labels_list.append(labels.cpu().detach().numpy())
 
-            if multires:
+            if multimodal:
                 inputsA = inputs[0].to(torch.float32).to(dev)
                 inputsB = inputs[1].to(torch.float32).to(dev)
                 y_pred = torch.sigmoid(model(inputsA, inputsB))

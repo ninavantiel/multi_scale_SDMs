@@ -1,6 +1,7 @@
 import torch
 from torch import nn
 from torchvision import models
+import torchvision.transforms as transforms
 from math import floor
 import numpy as np
 
@@ -130,7 +131,6 @@ class ASPP(nn.Module):
         self.imaxs = [int(self.center_idx + (s-1)/2 + 1) for s in self.subpatch_sizes]
         assert (np.array(self.imins) >= 0).all()
         assert (np.array(self.imaxs) <= in_patch_size).all()
-
         self.aspp_branches = [nn.Sequential(
             nn.Conv2d(in_channels, out_channels, k, dilation=d), nn.ReLU()
         ).to(device) for k, d in zip(kernel_sizes, dilations)]
@@ -139,6 +139,29 @@ class ASPP(nn.Module):
         x_in = [x[:, :, imin:imax, imin:imax] for imin, imax in zip(self.imins, self.imaxs)]
         x = [aspp(xi) for aspp, xi in zip(self.aspp_branches, x_in)]
         x = torch.cat(x, dim=1).squeeze()
+        # x = torch.mean(torch.stack(x), dim=0)    
+        return x
+    
+class ASPP_seg(nn.Module):
+    def __init__(self, in_patch_size, in_channels, target_size, out_channels, kernel_sizes, device):
+        super(ASPP_seg, self).__init__()
+        self.center_idx = in_patch_size // 2
+        padding_sizes = [(k-1)//2 for k in kernel_sizes]
+        self.aspp_branches = [nn.Sequential(
+            nn.Conv2d(in_channels, out_channels, k), 
+            nn.ReLU(),
+            nn.ConstantPad2d((p, p, p, p), np.nan)
+        ).to(device) for k, p in zip(kernel_sizes, padding_sizes)]
+        self.crop = transforms.CenterCrop(1)
+        self.linear_layers = [nn.Sequential(
+            nn.Linear(out_channels, target_size), nn.ReLU() 
+        ) for _ in range(len(kernel_sizes))]
+        # add dropout or BN??
+
+    def forward(self, x):
+        x = [aspp(x) for aspp in self.aspp_branches]
+        x = [self.crop(xi) for xi in x] #[xi[:,:,self.center_idx,self.center_idx] for xi in x]
+        x = [l(xi) for xi, l in zip(x, self.linear_layers)]
         return x
     
 class CNN(nn.Module):
@@ -165,35 +188,31 @@ class CNN(nn.Module):
         return x
     
 class MultiResolutionModel(nn.Module):
-    def __init__(self, in_channels, in_patch_size, target_size, backbone, backbone_params,
-                 aspp_out_channels, aspp_kernel_sizes, aspp_dilations, device):
+    def __init__(self, in_channels, in_patch_size, target_size, cnn_params, aspp_params, device):
         super(MultiResolutionModel, self).__init__()        
         self.target_size = target_size
 
-        if backbone == 'CNN':
-            self.backbone = CNN(
-                in_channels, 
-                in_patch_size, 
-                backbone_params['n_filters'], 
-                backbone_params['kernel_sizes'], 
-                backbone_params['paddings'], 
-                backbone_params['pooling_sizes']) 
+        self.backbone = CNN(
+            in_channels, 
+            in_patch_size, 
+            cnn_params['n_filters'], 
+            cnn_params['kernel_sizes'], 
+            cnn_params['paddings'], 
+            cnn_params['pooling_sizes']) 
         
-        else:
-            print('backbone not supported')
-            return 
-        
-        self.aspp_block = ASPP(
+        self.aspp_block = ASPP_seg(
+            in_patch_size,
             self.backbone.out_n_channels,
-            self.backbone.out_patch_size, 
-            aspp_out_channels, 
-            aspp_kernel_sizes, 
-            aspp_dilations, 
+            self.target_size,
+            aspp_params['out_channels'], 
+            aspp_params['kernel_sizes'],
             device)
-        self.linear = nn.Linear(aspp_out_channels*len(aspp_dilations), target_size)
-         
+        
+        self.linear = nn.Linear(self.target_size*len(aspp_params['kernel_sizes']), target_size)
+        
     def forward(self, x):
         x = self.backbone(x)
         x = self.aspp_block(x)
+        x = torch.cat(x, dim=1)
         x = self.linear(x)
         return x

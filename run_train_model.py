@@ -47,7 +47,7 @@ if __name__ == "__main__":
         num_workers_val = config['num_workers_val'],
         seed = config['seed'])
 
-# run_name = '0313_s25_env1_aspp_1024'
+# run_name = '0315_env8_aspp_seg'
 # path_to_config = f"{modeldir}{run_name}/config.json"
 # with open(path_to_config, "r") as f: 
 #     config = json.load(f)
