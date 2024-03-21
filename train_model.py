@@ -1,6 +1,8 @@
 import os
 import torch
 import wandb
+import argparse
+import json
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
@@ -101,19 +103,37 @@ def make_model(model_dict, device):
             model_dict['backbone_params'], 
             model_dict['aspp_params'],
             device)
+        
+    elif model_dict['model_name'] == 'SingleResolutionModel':
+        param_names = {'patch_size', 'backbone_params', 'aspp_params'}
+        assert param_names.issubset(set(model_dict.keys()))
+
+        backbone_param_names = {'n_filters', 'kernel_sizes', 'paddings', 'pooling_sizes'}
+        assert backbone_param_names.issubset(set(model_dict['backbone_params'].keys()))
+        aspp_param_names = {'out_channels', 'kernel_sizes'}
+        assert aspp_param_names.issubset(set(model_dict['aspp_params'].keys()))
+        assert len(model_dict['aspp_params']['kernel_sizes']) == 1
+
+        model = SingleResolutionModel(
+            model_dict['input_shape'][0],
+            model_dict['patch_size'],
+            model_dict['output_shape'],
+            model_dict['backbone_params'], 
+            model_dict['aspp_params'])
     
     return model
 
 def setup_model(
-        model_setup,
-        train_occ_path=po_path,
-        random_bg_path=None,
-        val_occ_path=pa_path,
-        n_max_low_occ=50,
-        embed_shape=None,
-        learning_rate=1e-3,
-        seed=42,
-        device=torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model_setup,
+    train_occ_path=po_path,
+    random_bg_path=None,
+    val_occ_path=pa_path,
+    n_max_low_occ=50,
+    embed_shape=None,
+    learning_rate=1e-3,
+    weight_decay=0,
+    seed=42,
+    device=torch.device("cuda" if torch.cuda.is_available() else "cpu")
 ):
     seed_everything(seed)
     assert len(model_setup) <= 2
@@ -163,7 +183,8 @@ def setup_model(
         )
     else:
         model = model_list[0]
-    optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
+    optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
+    # scheduler = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=1, end_factor=0.5, total_iters=50)# lr_lambda=lr_lambda)
 
     return train_data, val_data, model, optimizer, multimodal
 
@@ -183,6 +204,7 @@ def train_model(
     n_epochs=150, 
     batch_size=128, 
     learning_rate=1e-3, 
+    weight_decay=0,
     num_workers_train=8,
     num_workers_val=4,
     seed=42
@@ -199,6 +221,7 @@ def train_model(
         n_max_low_occ=n_max_low_occ,
         embed_shape=embed_shape, 
         learning_rate=learning_rate, 
+        weight_decay=weight_decay,
         seed=seed,
         device=dev) 
     model = model.to(dev)
@@ -225,7 +248,7 @@ def train_model(
                 'n_max_low_occ': n_max_low_occ, 
                 'n_species_low_occ': len(train_data.low_occ_species_idx),
                 'model': model_setup, 'embed_shape': embed_shape, 'epochs': n_epochs, 
-                'batch_size': batch_size, 'lr': learning_rate, 
+                'batch_size': batch_size, 'lr': learning_rate, 'weight_decay': weight_decay,
                 'optimizer':'SGD', 'loss': loss, 'lambda2': lambda2,
                 'val_loss': 'BCEloss', 'id': wandb_id
             }
@@ -247,7 +270,7 @@ def train_model(
     
     # model training
     for epoch in range(start_epoch, n_epochs):
-        print(f"EPOCH {epoch}")
+        print(f"EPOCH {epoch} (lr = {optimizer.param_groups[0]['lr']:.4f})")
 
         model.train()
         train_loss_list = []
@@ -285,6 +308,7 @@ def train_model(
             optimizer.zero_grad()
             train_loss.backward()
             optimizer.step()
+        # scheduler.step()
         
         avg_train_loss = np.array(train_loss_list).mean()
         print(f"{epoch}) TRAIN LOSS={avg_train_loss}")
@@ -351,3 +375,73 @@ def train_model(
                 'val_loss': avg_val_loss,
                 'val_auc': auc
             }, f"{modeldir}{run_name}/best_val_auc.pth")  
+
+if __name__ == "__main__": 
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-r", "--run_name", required=True, help="Run name")
+    parser.add_argument("-p", "--path_to_config", help="Path to run config file")
+
+    args = parser.parse_args()
+    run_name = args.run_name
+    path_to_config = args.path_to_config
+    if path_to_config is None:
+        path_to_config = f"{modeldir}{run_name}/config.json"
+    assert os.path.exists(path_to_config)
+
+    with open(path_to_config, "r") as f:
+        config = json.load(f)
+
+    config = {k: v if v != "" else None for k,v in config.items()}
+
+    model_setup = {}
+    if config['env_model'] is not None: 
+        config['env_model']['covariates'] = [eval(f) for f in config['env_model']['covariates']]
+        model_setup['env'] = config['env_model']
+    if config['sat_model'] is not None: 
+        config['sat_model']['covariates'] = [eval(f) for f in config['sat_model']['covariates']]
+        model_setup['sat'] = config['sat_model']
+
+    train_model(
+        run_name, 
+        log_wandb = config['log_wandb'], 
+        model_setup = model_setup,
+        wandb_project = config['wandb_project'],
+        wandb_id = config['wandb_id'], 
+        train_occ_path = eval(config['train_occ_path']), 
+        random_bg_path = eval(config['random_bg_path']) if config['random_bg_path'] is not None else None, 
+        val_occ_path = eval(config['val_occ_path']), 
+        n_max_low_occ = config['n_max_low_occ'],
+        embed_shape = config['embed_shape'],
+        loss = config['loss'], 
+        lambda2 = config['lambda2'],
+        n_epochs = config['n_epochs'], 
+        batch_size = config['batch_size'], 
+        learning_rate = config['learning_rate'], 
+        weight_decay = config['weight_decay'],
+        num_workers_train = config['num_workers_train'],
+        num_workers_val = config['num_workers_val'],
+        seed = config['seed'])
+    
+# run_name = '0315_env8_aspp_seg'
+# path_to_config = f"{modeldir}{run_name}/config.json"
+# with open(path_to_config, "r") as f: 
+#     config = json.load(f)
+
+# config = {k: v if v != "" else None for k,v in config.items()}
+# model_setup = {}
+# config['env_model']['covariates'] = [eval(f) for f in config['env_model']['covariates']]
+# model_setup['env'] = config['env_model']
+
+# train_occ_path = eval(config['train_occ_path'])
+# random_bg_path = eval(config['random_bg_path']) if config['random_bg_path'] is not None else None
+# val_occ_path = eval(config['val_occ_path'])
+# n_max_low_occ = config['n_max_low_occ']
+# embed_shape = config['embed_shape']
+# loss = config['loss']
+# lambda2 = config['lambda2']
+# n_epochs = config['n_epochs']
+# batch_size = config['batch_size']
+# learning_rate = config['learning_rate']
+# num_workers_train = config['num_workers_train']
+# num_workers_val = config['num_workers_val']
+# seed = config['seed']

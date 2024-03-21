@@ -117,53 +117,39 @@ class MultimodalModel(nn.Module):
         x = torch.cat((x1, x2), dim=1)
         x = self.fc(x)
         return x
-
-class ASPP(nn.Module):
+   
+class ASPP_seg(nn.Module):
     '''
     Adapted from:
     https://github.com/yassouali/pytorch-segmentation/blob/master/models/deeplabv3_plus.py
     '''
-    def __init__(self, in_channels, in_patch_size, out_channels, kernel_sizes, dilations, device):
-        super(ASPP, self).__init__()
-        self.subpatch_sizes = [(d-1)*(k-1) + k for k, d in zip(kernel_sizes, dilations)]
-        self.center_idx = in_patch_size // 2
-        self.imins = [int(self.center_idx - (s-1)/2) for s in self.subpatch_sizes]
-        self.imaxs = [int(self.center_idx + (s-1)/2 + 1) for s in self.subpatch_sizes]
-        assert (np.array(self.imins) >= 0).all()
-        assert (np.array(self.imaxs) <= in_patch_size).all()
-        self.aspp_branches = [nn.Sequential(
-            nn.Conv2d(in_channels, out_channels, k, dilation=d), nn.ReLU()
-        ).to(device) for k, d in zip(kernel_sizes, dilations)]
-
-    def forward(self, x):
-        x_in = [x[:, :, imin:imax, imin:imax] for imin, imax in zip(self.imins, self.imaxs)]
-        x = [aspp(xi) for aspp, xi in zip(self.aspp_branches, x_in)]
-        x = torch.cat(x, dim=1).squeeze()
-        # x = torch.mean(torch.stack(x), dim=0)    
-        return x
-    
-class ASPP_seg(nn.Module):
     def __init__(self, in_patch_size, in_channels, target_size, out_channels, kernel_sizes, device):
         super(ASPP_seg, self).__init__()
         self.center_idx = in_patch_size // 2
         padding_sizes = [(k-1)//2 for k in kernel_sizes]
         self.aspp_branches = [nn.Sequential(
             nn.Conv2d(in_channels, out_channels, k), 
+            # nn.BatchNorm2d(out_channels),
             nn.ReLU(),
             nn.ConstantPad2d((p, p, p, p), np.nan)
         ).to(device) for k, p in zip(kernel_sizes, padding_sizes)]
         self.crop = transforms.CenterCrop(1)
         self.linear_layers = [nn.Sequential(
             nn.Linear(out_channels, target_size), nn.ReLU() 
-        ) for _ in range(len(kernel_sizes))]
-        # add dropout or BN??
+        ).to(device) for _ in range(len(kernel_sizes))]
 
     def forward(self, x):
         x = [aspp(x) for aspp in self.aspp_branches]
-        x = [self.crop(xi) for xi in x] #[xi[:,:,self.center_idx,self.center_idx] for xi in x]
+        x = [self.crop(xi).squeeze() for xi in x] #[xi[:,:,self.center_idx,self.center_idx] for xi in x]
         x = [l(xi) for xi, l in zip(x, self.linear_layers)]
         return x
     
+# class ASPP(nn.Module):
+#     def __init__(self): #, in_patch_size, in_channels, target_size, out_channels, kernel_sizes, device):
+#         super(ASPP, self).__init__()
+#         self.aspp1 = 
+
+
 class CNN(nn.Module):
     def __init__(
             self, in_channels, in_patch_size, n_filters, kernel_sizes, 
@@ -173,7 +159,7 @@ class CNN(nn.Module):
         layers = []
         for f_in, f, k, p, pool in zip([in_channels]+n_filters[:-1], n_filters, kernel_sizes, paddings, pooling_sizes):
             layers.append(nn.Conv2d(f_in, f, kernel_size=k, padding=p))
-            layers.append(nn.BatchNorm2d(f))
+            # layers.append(nn.BatchNorm2d(f))
             layers.append(nn.ReLU())
             layers.append(nn.MaxPool2d(kernel_size=pool, stride=pool))
             patch_size = floor((patch_size + 2*p - k + 1) / pool)
@@ -214,5 +200,29 @@ class MultiResolutionModel(nn.Module):
         x = self.backbone(x)
         x = self.aspp_block(x)
         x = torch.cat(x, dim=1)
+        x = self.linear(x)
+        return x
+    
+class SingleResolutionModel(nn.Module):
+    def __init__(self, in_channels, in_patch_size, target_size, cnn_params, aspp_params):
+        super(SingleResolutionModel, self).__init__()
+        self.target_size = target_size
+
+        self.backbone = CNN(
+            in_channels, 
+            in_patch_size, 
+            cnn_params['n_filters'], 
+            cnn_params['kernel_sizes'], 
+            cnn_params['paddings'], 
+            cnn_params['pooling_sizes']) 
+        
+        self.aspp_block = nn.Sequential(
+            nn.Conv2d(self.backbone.out_n_channels, aspp_params['out_channels'], aspp_params['kernel_sizes'][0]), nn.ReLU(), nn.Flatten(), 
+            nn.Linear(aspp_params['out_channels'], target_size), nn.ReLU())
+        self.linear = nn.Linear(self.target_size*len(aspp_params['kernel_sizes']), target_size)
+                
+    def forward(self, x):
+        x = self.backbone(x)
+        x = self.aspp_block(x)
         x = self.linear(x)
         return x
