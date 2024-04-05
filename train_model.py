@@ -46,7 +46,7 @@ def make_providers(covariate_paths_list, patch_size, flatten):
             providers.append(MultipleRasterPatchProvider(cov, size=patch_size, flatten=flatten))
     return providers
 
-def make_model(model_dict, device):
+def make_model(model_dict):
     assert {'input_shape', 'output_shape'}.issubset(set(model_dict.keys()))
 
     if model_dict['model_name'] == 'MLP':
@@ -93,28 +93,10 @@ def make_model(model_dict, device):
 
         backbone_param_names = {'n_filters', 'kernel_sizes', 'paddings', 'pooling_sizes'}
         assert backbone_param_names.issubset(set(model_dict['backbone_params'].keys()))
-        aspp_param_names = {'out_channels', 'kernel_sizes'}
+        aspp_param_names = {'out_channels', 'kernel_sizes', 'n_linear_layers'}
         assert aspp_param_names.issubset(set(model_dict['aspp_params'].keys()))
 
         model = MultiResolutionModel(
-            model_dict['input_shape'][0],
-            model_dict['patch_size'],
-            model_dict['output_shape'],
-            model_dict['backbone_params'], 
-            model_dict['aspp_params'],
-            device)
-        
-    elif model_dict['model_name'] == 'SingleResolutionModel':
-        param_names = {'patch_size', 'backbone_params', 'aspp_params'}
-        assert param_names.issubset(set(model_dict.keys()))
-
-        backbone_param_names = {'n_filters', 'kernel_sizes', 'paddings', 'pooling_sizes'}
-        assert backbone_param_names.issubset(set(model_dict['backbone_params'].keys()))
-        aspp_param_names = {'out_channels', 'kernel_sizes'}
-        assert aspp_param_names.issubset(set(model_dict['aspp_params'].keys()))
-        assert len(model_dict['aspp_params']['kernel_sizes']) == 1
-
-        model = SingleResolutionModel(
             model_dict['input_shape'][0],
             model_dict['patch_size'],
             model_dict['output_shape'],
@@ -132,8 +114,7 @@ def setup_model(
     embed_shape=None,
     learning_rate=1e-3,
     weight_decay=0,
-    seed=42,
-    device=torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    seed=42
 ):
     seed_everything(seed)
     assert len(model_setup) <= 2
@@ -176,7 +157,7 @@ def setup_model(
     )
     
     # model and optimizer
-    model_list = [make_model(model_dict, device) for model_dict in model_setup.values()]
+    model_list = [make_model(model_dict) for model_dict in model_setup.values()]
     if multimodal:
         model = MultimodalModel(
             model_list[0], model_list[1], train_data.n_species, embed_shape, embed_shape
@@ -222,8 +203,7 @@ def train_model(
         embed_shape=embed_shape, 
         learning_rate=learning_rate, 
         weight_decay=weight_decay,
-        seed=seed,
-        device=dev) 
+        seed=seed) 
     model = model.to(dev)
 
     # data loaders
@@ -442,6 +422,7 @@ if __name__ == "__main__":
 # n_epochs = config['n_epochs']
 # batch_size = config['batch_size']
 # learning_rate = config['learning_rate']
+# weight_decay = config['weight_decay']
 # num_workers_train = config['num_workers_train']
 # num_workers_val = config['num_workers_val']
 # seed = config['seed']
