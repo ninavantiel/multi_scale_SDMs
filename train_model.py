@@ -93,7 +93,7 @@ def make_model(model_dict):
 
         backbone_param_names = {'n_filters', 'kernel_sizes', 'paddings', 'pooling_sizes'}
         assert backbone_param_names.issubset(set(model_dict['backbone_params'].keys()))
-        aspp_param_names = {'out_channels', 'kernel_sizes', 'n_linear_layers'}
+        aspp_param_names = {'out_channels', 'kernel_sizes', 'pooling_sizes', 'n_linear_layers'}
         assert aspp_param_names.issubset(set(model_dict['aspp_params'].keys()))
 
         model = MultiResolutionModel(
@@ -402,7 +402,8 @@ if __name__ == "__main__":
         num_workers_val = config['num_workers_val'],
         seed = config['seed'])
     
-# run_name = '0315_env8_aspp_seg'
+
+# run_name = '0409_env5_3res_cnn_4layers_aspp_0ll'
 # path_to_config = f"{modeldir}{run_name}/config.json"
 # with open(path_to_config, "r") as f: 
 #     config = json.load(f)

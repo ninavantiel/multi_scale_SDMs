@@ -119,35 +119,77 @@ class MultimodalModel(nn.Module):
         return x
 
 class ASPP_branch(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size, n_linear_layers, target_size):
+    def __init__(self, in_channels, out_channels, kernel_sizes, pooling_sizes, n_linear_layers, target_size):#kernel_size, n_linear_layers, target_size):
         super(ASPP_branch, self).__init__()
-        self.conv = nn.Sequential(
-            nn.Conv2d(in_channels, out_channels, kernel_size, padding = (kernel_size-1)//2),
-            nn.ReLU())
+        conv_layers = []
+        conv_layers.append(nn.Conv2d(in_channels, out_channels, kernel_sizes[0], padding = (k-1)//2))
+        conv_layers.append(nn.ReLU())
+        conv_layers.append(nn.MaxPool2d(kernel_size=pooling_sizes[0], stride=pooling_sizes[0]))
+        for k, p in zip(kernel_sizes[1:], pooling_sizes[1:]):
+            conv_layers.append(nn.Conv2d(out_channels, out_channels, k, padding = (k-1)//2))
+            conv_layers.append(nn.ReLU())
+            conv_layers.append(nn.MaxPool2d(kernel_size=p, stride=p))
+        self.conv_layers = nn.Sequential(*conv_layers)
 
         self.crop = transforms.CenterCrop(1)
         
         linear_layers = []
-        for i in range(n_linear_layers):
-            if i < n_linear_layers-1:
-                linear_layers.append(nn.Linear(out_channels, out_channels))
-            else:
-                linear_layers.append(nn.Linear(out_channels, target_size))
+        for _ in range(n_linear_layers-1):
+            linear_layers.append(nn.Linear(out_channels, out_channels))
             linear_layers.append(nn.ReLU())
+        linear_layers.append(nn.Linear(out_channels, target_size))
+        linear_layers.append(nn.ReLU())
         self.linear_layers = nn.Sequential(*linear_layers)
     
     def forward(self, x):
-        x = self.conv(x)
+        # x = self.conv(x)
+        x = self.conv_layers(x)
         x = self.crop(x).squeeze()
         x = self.linear_layers(x)
         return x
+    
+class decoder_branch(nn.Module):
+    def __init__(self, n_linear_layers, in_size, n_channels, out_channels, kernel_sizes, pooling_sizes):
+        super(decoder_branch, self).__init__()
+
+        linear_layers = []
+        linear_layers.append(nn.Linear(in_size, n_channels))
+        linear_layers.append(nn.ReLU())
+        for _ in range(n_linear_layers-1):
+            linear_layers.append(nn.Linear(n_channels, n_channels))
+            linear_layers.append(nn.ReLU())
+        self.linear_layers = nn.Sequential(*linear_layers)
+
+        deconv_layers = []
+        for k, p in zip(kernel_sizes[:-1], pooling_sizes[:-1]):
+            deconv_layers.append(nn.Upsample(scale_factor=p, mode='bilinear', align_corners=True))
+            deconv_layers.append(nn.ConvTranspose2d(n_channels, n_channels, k))
+            deconv_layers.append(nn.ReLU())
+        deconv_layers.append(nn.Upsample(scale_factor=pooling_sizes[-1]))
+        deconv_layers.append(nn.ConvTranspose2d(n_channels, out_channels, kernel_sizes[-1]))
+        deconv_layers.append(nn.ReLU())
+        self.deconv_layers = nn.Sequential(*deconv_layers)
+
+    def forward(self, x):
+        x = self.linear_layers(x)
+        x = self.deconv_layers(x)
+        return x        
 
 class CNN(nn.Module):
     def __init__(
-            self, in_channels, in_patch_size, n_filters, kernel_sizes, 
-            paddings, pooling_sizes): 
+            self, in_channels, in_patch_size, n_filters, kernel_sizes, paddings, pooling_sizes): 
         super(CNN, self).__init__()
         patch_size = in_patch_size
+        # for i in range(n_layers):
+        #     if i == 0: 
+        #         layers.append(nn.Conv2d(in_channels, n_filters, kernel_size=kernel_size, padding=padding))
+        #     else:
+        #         layers.append(nn.Conv2d(n_filters, n_filters, kernel_size=kernel_size, padding=padding))
+        #     layers.append(nn.BatchNorm2d(n_filters))
+        #     layers.append(nn.ReLU())
+        #     layers.append(nn.MaxPool2d(kernel_size=pooling_size, stride=pooling_size))
+        #     patch_size = floor((patch_size + 2*padding - kernel_size + 1) / pooling_size) 
+
         layers = []
         for f_in, f, k, p, pool in zip([in_channels]+n_filters[:-1], n_filters, kernel_sizes, paddings, pooling_sizes):
             layers.append(nn.Conv2d(f_in, f, kernel_size=k, padding=p))
@@ -177,11 +219,11 @@ class MultiResolutionModel(nn.Module):
             cnn_params['kernel_sizes'], 
             cnn_params['paddings'], 
             cnn_params['pooling_sizes']) 
-        
+
         self.aspp_branches = nn.ModuleList([ASPP_branch(
-            self.backbone.out_n_channels, 
-            aspp_params['out_channels'], k, aspp_params['n_linear_layers'], self.target_size
-        ) for k in aspp_params['kernel_sizes']])
+            self.backbone.out_n_channels, aspp_params['out_channels'], 
+            k, p, aspp_params['n_linear_layers'], self.target_size
+        ) for k, p in zip(aspp_params['kernel_sizes'], aspp_params['pooling_sizes'])])
 
         self.linear = nn.Linear(
             self.target_size*len(aspp_params['kernel_sizes']), 
@@ -193,3 +235,22 @@ class MultiResolutionModel(nn.Module):
         x = torch.cat(xlist, dim=1)
         x = self.linear(x)
         return x
+    
+class MultiResolutionAutoencoder(nn.Module):
+    def __init__(self, in_channels, in_patch_size, target_size, cnn_params, aspp_params):
+        super(MultiResolutionModel, self).__init__(
+            in_channels, in_patch_size, target_size, cnn_params, aspp_params)
+        
+        self.decoder_branches = nn.ModuleList([decoder_branch(
+            aspp_params['n_linear_layers'], self.target_size, 
+            aspp_params['out_channels'], in_channels, k, p
+        ) for k, p in zip(aspp_params['kernel_sizes'][::-1], aspp_params['pooling_sizes'][::-1])])
+   
+    def forward(self, x):
+        x = self.backbone(x)
+        xlist = [aspp(x) for aspp in self.aspp_branches]
+        x = torch.cat(xlist, dim=1)
+        x = self.linear(x)
+
+        xlist = [decoder(xl) for xl, decoder in zip(xlist, self.decoder_branches)]
+        return x, xlist
