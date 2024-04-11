@@ -87,7 +87,7 @@ def make_model(model_dict):
             model_dict['input_shape'][0], 
             model_dict['pretrained'])
         
-    elif model_dict['model_name'] == 'MultiResolutionModel':
+    elif model_dict['model_name'] in ['MultiResolutionModel', 'MultiResolutionAutoencoder']:
         param_names = {'patch_size', 'backbone_params', 'aspp_params'}
         assert param_names.issubset(set(model_dict.keys()))
 
@@ -96,13 +96,21 @@ def make_model(model_dict):
         aspp_param_names = {'out_channels', 'kernel_sizes', 'pooling_sizes', 'n_linear_layers'}
         assert aspp_param_names.issubset(set(model_dict['aspp_params'].keys()))
 
-        model = MultiResolutionModel(
-            model_dict['input_shape'][0],
-            model_dict['patch_size'],
-            model_dict['output_shape'],
-            model_dict['backbone_params'], 
-            model_dict['aspp_params'])
-    
+        if model_dict['model_name'] == 'MultiResolutionModel':
+            model = MultiResolutionModel(
+                model_dict['input_shape'][0],
+                model_dict['patch_size'],
+                model_dict['output_shape'],
+                model_dict['backbone_params'], 
+                model_dict['aspp_params'])
+            
+        elif model_dict['model_name'] == 'MultiResolutionAutoencoder':
+                model = MultiResolutionAutoencoder(
+                model_dict['input_shape'][0],
+                model_dict['patch_size'],
+                model_dict['output_shape'],
+                model_dict['backbone_params'], 
+                model_dict['aspp_params'])
     return model
 
 def setup_model(
@@ -120,6 +128,12 @@ def setup_model(
     assert len(model_setup) <= 2
     multimodal = (len(model_setup) == 2)
     if multimodal: assert random_bg_path is None
+    
+    if list(model_setup.values())[0]['model_name'] == 'MultiResolutionAutoencoder': 
+        assert multimodal == False
+        autoencoder = True
+    else: 
+        autoencoder = False
 
     # covariate patch providers 
     providers = []
@@ -167,7 +181,7 @@ def setup_model(
     optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
     # scheduler = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=1, end_factor=0.5, total_iters=50)# lr_lambda=lr_lambda)
 
-    return train_data, val_data, model, optimizer, multimodal
+    return train_data, val_data, model, optimizer, multimodal, autoencoder
 
 def train_model(
     run_name, 
@@ -194,7 +208,7 @@ def train_model(
     dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"DEVICE: {dev}")
 
-    train_data, val_data, model, optimizer, multimodal = setup_model(
+    train_data, val_data, model, optimizer, multimodal, autoencoder = setup_model(
         model_setup=model_setup, 
         train_occ_path=train_occ_path, 
         random_bg_path=random_bg_path, 
@@ -212,8 +226,12 @@ def train_model(
 
     # loss functions
     loss_fn = eval(loss)
+    if autoencoder: 
+        autoencoder_loss_fn = nn.L1Loss()
+    else: 
+        autoencoder_loss_fn = None
     species_weights = torch.tensor(train_data.species_weights).to(dev)
-    val_loss_fn = torch.nn.BCELoss()
+    val_loss_fn = nn.BCELoss()
 
     # log run in wandb
     if log_wandb:
@@ -229,8 +247,8 @@ def train_model(
                 'n_species_low_occ': len(train_data.low_occ_species_idx),
                 'model': model_setup, 'embed_shape': embed_shape, 'epochs': n_epochs, 
                 'batch_size': batch_size, 'lr': learning_rate, 'weight_decay': weight_decay,
-                'optimizer':'SGD', 'loss': loss, 'lambda2': lambda2,
-                'val_loss': 'BCEloss', 'id': wandb_id
+                'optimizer':'SGD', 'loss': loss, 'lambda2': lambda2, 
+                'autoencoder_loss': autoencoder_loss_fn, 'val_loss': 'BCEloss', 'id': wandb_id
             }
         )
         
@@ -250,7 +268,7 @@ def train_model(
     
     # model training
     for epoch in range(start_epoch, n_epochs):
-        print(f"EPOCH {epoch} (lr = {optimizer.param_groups[0]['lr']:.4f})")
+        print(f"EPOCH {epoch}") # (lr = {optimizer.param_groups[0]['lr']:.4f})")
 
         model.train()
         train_loss_list = []
@@ -268,8 +286,14 @@ def train_model(
                     inputs = po_inputs[0].to(torch.float32).to(dev)
                 else:
                     inputs = torch.cat((po_inputs[0], bg_inputs[0]), 0).to(torch.float32).to(dev)
-                y_pred = torch.sigmoid(model(inputs))
-            
+
+                if autoencoder:
+                    input_patches = [transforms.CenterCrop(size=aspp.receptive_field)(inputs) for aspp in model.aspp_branches][::-1]
+                    y_pred, xlist_decoded = model(inputs)
+                    y_pred = torch.sigmoid(y_pred)
+                else:
+                    y_pred = torch.sigmoid(model(inputs))
+                    
             if random_bg_path is None:
                 if loss == 'weighted_loss':
                     train_loss = loss_fn(y_pred, labels, species_weights)
@@ -282,6 +306,12 @@ def train_model(
                     train_loss = loss_fn(po_pred, labels, species_weights, lambda2, bg_pred)
                 else:
                     train_loss = loss_fn(po_pred, labels, bg_pred)
+            
+            if autoencoder:
+                autoencoder_loss = np.mean([autoencoder_loss_fn(pred_patch, input_patch).cpu().detach() for pred_patch, input_patch in zip(xlist_decoded, input_patches)])
+                print(f"train loss = {train_loss}, reconstruction loss = {autoencoder_loss}")
+                train_loss += autoencoder_loss
+
             train_loss_list.append(train_loss.cpu().detach())
 
             # backward pass and weight update
@@ -306,13 +336,24 @@ def train_model(
                 y_pred = torch.sigmoid(model(inputsA, inputsB))
             else:
                 inputs = inputs[0].to(torch.float32).to(dev)
-                y_pred = torch.sigmoid(model(inputs))
+
+                if autoencoder:
+                    input_patches = [transforms.CenterCrop(size=aspp.receptive_field)(inputs) for aspp in model.aspp_branches][::-1]
+                    y_pred, xlist_decoded = model(inputs)
+                    y_pred = torch.sigmoid(y_pred)
+                else:
+                    y_pred = torch.sigmoid(model(inputs))
 
             y_pred_list.append(y_pred.cpu().detach().numpy())
 
             # validation loss
-            val_loss = val_loss_fn(y_pred, labels) 
-            val_loss_list.append(val_loss.cpu().detach())
+            val_loss = val_loss_fn(y_pred, labels).cpu().detach()
+            if autoencoder:
+                autoencoder_loss = np.mean([autoencoder_loss_fn(pred_patch, input_patch).cpu().detach() for pred_patch, input_patch in zip(xlist_decoded, input_patches)])
+                print(f"val loss = {train_loss}, reconstruction loss = {autoencoder_loss}")
+                val_loss += autoencoder_loss
+
+            val_loss_list.append(val_loss)
             
         avg_val_loss = np.array(val_loss_list).mean()
         labels = np.concatenate(labels_list)
@@ -403,7 +444,7 @@ if __name__ == "__main__":
         seed = config['seed'])
     
 
-# run_name = '0409_env5_3res_cnn_4layers_aspp_0ll'
+# run_name = '0411_env6_3res_autoencoder'
 # path_to_config = f"{modeldir}{run_name}/config.json"
 # with open(path_to_config, "r") as f: 
 #     config = json.load(f)

@@ -121,15 +121,19 @@ class MultimodalModel(nn.Module):
 class ASPP_branch(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_sizes, pooling_sizes, n_linear_layers, target_size):#kernel_size, n_linear_layers, target_size):
         super(ASPP_branch, self).__init__()
+
         conv_layers = []
-        conv_layers.append(nn.Conv2d(in_channels, out_channels, kernel_sizes[0], padding = (k-1)//2))
-        conv_layers.append(nn.ReLU())
-        conv_layers.append(nn.MaxPool2d(kernel_size=pooling_sizes[0], stride=pooling_sizes[0]))
-        for k, p in zip(kernel_sizes[1:], pooling_sizes[1:]):
-            conv_layers.append(nn.Conv2d(out_channels, out_channels, k, padding = (k-1)//2))
+        receptive_field = 1
+        for i, (k, p) in enumerate(zip(kernel_sizes, pooling_sizes)):
+            if i == 0: 
+                conv_layers.append(nn.Conv2d(in_channels, out_channels, k, padding = (k-1)//2))
+            else:
+                conv_layers.append(nn.Conv2d(out_channels, out_channels, k, padding = (k-1)//2))
             conv_layers.append(nn.ReLU())
             conv_layers.append(nn.MaxPool2d(kernel_size=p, stride=p))
+            receptive_field = (receptive_field + k - 1) * p
         self.conv_layers = nn.Sequential(*conv_layers)
+        self.receptive_field = receptive_field
 
         self.crop = transforms.CenterCrop(1)
         
@@ -165,13 +169,14 @@ class decoder_branch(nn.Module):
             deconv_layers.append(nn.Upsample(scale_factor=p, mode='bilinear', align_corners=True))
             deconv_layers.append(nn.ConvTranspose2d(n_channels, n_channels, k))
             deconv_layers.append(nn.ReLU())
-        deconv_layers.append(nn.Upsample(scale_factor=pooling_sizes[-1]))
+        deconv_layers.append(nn.Upsample(scale_factor=pooling_sizes[-1], mode='bilinear', align_corners=True))
         deconv_layers.append(nn.ConvTranspose2d(n_channels, out_channels, kernel_sizes[-1]))
         deconv_layers.append(nn.ReLU())
         self.deconv_layers = nn.Sequential(*deconv_layers)
 
     def forward(self, x):
         x = self.linear_layers(x)
+        x = x.unsqueeze(2).unsqueeze(3)
         x = self.deconv_layers(x)
         return x        
 
@@ -236,10 +241,9 @@ class MultiResolutionModel(nn.Module):
         x = self.linear(x)
         return x
     
-class MultiResolutionAutoencoder(nn.Module):
+class MultiResolutionAutoencoder(MultiResolutionModel):
     def __init__(self, in_channels, in_patch_size, target_size, cnn_params, aspp_params):
-        super(MultiResolutionModel, self).__init__(
-            in_channels, in_patch_size, target_size, cnn_params, aspp_params)
+        super(MultiResolutionAutoencoder, self).__init__(in_channels, in_patch_size, target_size, cnn_params, aspp_params)
         
         self.decoder_branches = nn.ModuleList([decoder_branch(
             aspp_params['n_linear_layers'], self.target_size, 
