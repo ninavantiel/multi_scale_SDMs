@@ -119,19 +119,19 @@ class MultimodalModel(nn.Module):
         return x
 
 class ASPP_branch(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_sizes, pooling_sizes, n_linear_layers, target_size):#kernel_size, n_linear_layers, target_size):
+    def __init__(self, in_channels, out_channels, kernel_sizes, dilations, pooling_sizes, n_linear_layers, target_size):
         super(ASPP_branch, self).__init__()
 
         conv_layers = []
         receptive_field = 1
-        for i, (k, p) in enumerate(zip(kernel_sizes, pooling_sizes)):
+        for i, (k, d, p) in enumerate(zip(kernel_sizes, dilations, pooling_sizes)):
             if i == 0: 
-                conv_layers.append(nn.Conv2d(in_channels, out_channels, k, padding = (k-1)//2))
+                conv_layers.append(nn.Conv2d(in_channels, out_channels, k, dilation=d)) #, padding = (k-1)//2)
             else:
-                conv_layers.append(nn.Conv2d(out_channels, out_channels, k, padding = (k-1)//2))
+                conv_layers.append(nn.Conv2d(out_channels, out_channels, k, dilation=d)) #padding = (k-1)//2),
             conv_layers.append(nn.ReLU())
             conv_layers.append(nn.MaxPool2d(kernel_size=p, stride=p))
-            receptive_field = (receptive_field + k - 1) * p
+            receptive_field = (receptive_field + (k-1)*d) * p
         self.conv_layers = nn.Sequential(*conv_layers)
         self.receptive_field = receptive_field
 
@@ -146,7 +146,6 @@ class ASPP_branch(nn.Module):
         self.linear_layers = nn.Sequential(*linear_layers)
     
     def forward(self, x):
-        # x = self.conv(x)
         x = self.conv_layers(x)
         x = self.crop(x).squeeze()
         x = self.linear_layers(x)
@@ -185,15 +184,6 @@ class CNN(nn.Module):
             self, in_channels, in_patch_size, n_filters, kernel_sizes, paddings, pooling_sizes): 
         super(CNN, self).__init__()
         patch_size = in_patch_size
-        # for i in range(n_layers):
-        #     if i == 0: 
-        #         layers.append(nn.Conv2d(in_channels, n_filters, kernel_size=kernel_size, padding=padding))
-        #     else:
-        #         layers.append(nn.Conv2d(n_filters, n_filters, kernel_size=kernel_size, padding=padding))
-        #     layers.append(nn.BatchNorm2d(n_filters))
-        #     layers.append(nn.ReLU())
-        #     layers.append(nn.MaxPool2d(kernel_size=pooling_size, stride=pooling_size))
-        #     patch_size = floor((patch_size + 2*padding - kernel_size + 1) / pooling_size) 
 
         layers = []
         for f_in, f, k, p, pool in zip([in_channels]+n_filters[:-1], n_filters, kernel_sizes, paddings, pooling_sizes):
@@ -218,21 +208,15 @@ class MultiResolutionModel(nn.Module):
         self.target_size = target_size
 
         self.backbone = CNN(
-            in_channels, 
-            in_patch_size, 
-            cnn_params['n_filters'], 
-            cnn_params['kernel_sizes'], 
-            cnn_params['paddings'], 
-            cnn_params['pooling_sizes']) 
+            in_channels, in_patch_size, cnn_params['n_filters'], cnn_params['kernel_sizes'], 
+            cnn_params['paddings'], cnn_params['pooling_sizes']) 
 
         self.aspp_branches = nn.ModuleList([ASPP_branch(
             self.backbone.out_n_channels, aspp_params['out_channels'], 
-            k, p, aspp_params['n_linear_layers'], self.target_size
-        ) for k, p in zip(aspp_params['kernel_sizes'], aspp_params['pooling_sizes'])])
+            k, d, p, aspp_params['n_linear_layers'], aspp_params['out_size']
+        ) for k, d, p in zip(aspp_params['kernel_sizes'], aspp_params['dilations'], aspp_params['pooling_sizes'])])
 
-        self.linear = nn.Linear(
-            self.target_size*len(aspp_params['kernel_sizes']), 
-            target_size)
+        self.linear = nn.Linear(aspp_params['out_size']*len(aspp_params['kernel_sizes']), target_size)
         
     def forward(self, x):
         x = self.backbone(x)
@@ -258,3 +242,71 @@ class MultiResolutionAutoencoder(MultiResolutionModel):
 
         xlist = [decoder(xl) for xl, decoder in zip(xlist, self.decoder_branches)]
         return x, xlist
+
+def make_model(model_dict):
+    assert {'input_shape', 'output_shape'}.issubset(set(model_dict.keys()))
+
+    if model_dict['model_name'] == 'MLP':
+        param_names = {'n_layers', 'width', 'dropout'}
+        assert param_names.issubset(set(model_dict.keys()))
+
+        model = MLP(model_dict['input_shape'][0],
+                    model_dict['output_shape'], 
+                    model_dict['n_layers'], 
+                    model_dict['width'], 
+                    model_dict['dropout'])
+        
+    elif model_dict['model_name'] == 'CNN':
+        param_names = {
+            'patch_size', 'n_conv_layers', 'n_filters', 'width', 'kernel_size', 
+            'padding', 'pooling_size', 'dropout', 'pool_only_last'
+        }
+        assert param_names.issubset(set(model_dict.keys()))
+        assert model_dict['n_conv_layers'] == len(model_dict['n_filters'])
+
+        model = ShallowCNN(model_dict['input_shape'][0],
+                           model_dict['patch_size'], 
+                           model_dict['output_shape'],
+                           model_dict['n_conv_layers'], 
+                           model_dict['n_filters'], 
+                           model_dict['width'], 
+                           model_dict['kernel_size'], 
+                           model_dict['padding'],
+                           model_dict['pooling_size'], 
+                           model_dict['dropout'],
+                           model_dict['pool_only_last'])
+        
+    elif model_dict['model_name'] == 'ResNet':
+        assert 'pretrained' in list(model_dict.keys())
+
+        model = get_resnet(
+            model_dict['output_shape'], 
+            model_dict['input_shape'][0], 
+            model_dict['pretrained'])
+        
+    elif model_dict['model_name'] in ['MultiResolutionModel', 'MultiResolutionAutoencoder']:
+        param_names = {'patch_size', 'backbone_params', 'aspp_params'}
+        assert param_names.issubset(set(model_dict.keys()))
+
+        backbone_param_names = {'n_filters', 'kernel_sizes', 'paddings', 'pooling_sizes'}
+        assert backbone_param_names.issubset(set(model_dict['backbone_params'].keys()))
+        aspp_param_names = {'out_channels', 'out_size', 'kernel_sizes', 'dilations', 'pooling_sizes', 'n_linear_layers'}
+        assert aspp_param_names.issubset(set(model_dict['aspp_params'].keys()))
+
+        if model_dict['model_name'] == 'MultiResolutionModel':
+            model = MultiResolutionModel(
+                model_dict['input_shape'][0],
+                model_dict['patch_size'],
+                model_dict['output_shape'],
+                model_dict['backbone_params'], 
+                model_dict['aspp_params'])
+            
+        elif model_dict['model_name'] == 'MultiResolutionAutoencoder':
+                model = MultiResolutionAutoencoder(
+                model_dict['input_shape'][0],
+                model_dict['patch_size'],
+                model_dict['output_shape'],
+                model_dict['backbone_params'], 
+                model_dict['aspp_params'])
+
+    return model

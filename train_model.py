@@ -46,73 +46,6 @@ def make_providers(covariate_paths_list, patch_size, flatten):
             providers.append(MultipleRasterPatchProvider(cov, size=patch_size, flatten=flatten))
     return providers
 
-def make_model(model_dict):
-    assert {'input_shape', 'output_shape'}.issubset(set(model_dict.keys()))
-
-    if model_dict['model_name'] == 'MLP':
-        param_names = {'n_layers', 'width', 'dropout'}
-        assert param_names.issubset(set(model_dict.keys()))
-
-        model = MLP(model_dict['input_shape'][0],
-                    model_dict['output_shape'], 
-                    model_dict['n_layers'], 
-                    model_dict['width'], 
-                    model_dict['dropout'])
-        
-    elif model_dict['model_name'] == 'CNN':
-        param_names = {
-            'patch_size', 'n_conv_layers', 'n_filters', 'width', 'kernel_size', 
-            'padding', 'pooling_size', 'dropout', 'pool_only_last'
-        }
-        assert param_names.issubset(set(model_dict.keys()))
-        assert model_dict['n_conv_layers'] == len(model_dict['n_filters'])
-
-        model = ShallowCNN(model_dict['input_shape'][0],
-                           model_dict['patch_size'], 
-                           model_dict['output_shape'],
-                           model_dict['n_conv_layers'], 
-                           model_dict['n_filters'], 
-                           model_dict['width'], 
-                           model_dict['kernel_size'], 
-                           model_dict['padding'],
-                           model_dict['pooling_size'], 
-                           model_dict['dropout'],
-                           model_dict['pool_only_last'])
-        
-    elif model_dict['model_name'] == 'ResNet':
-        assert 'pretrained' in list(model_dict.keys())
-
-        model = get_resnet(
-            model_dict['output_shape'], 
-            model_dict['input_shape'][0], 
-            model_dict['pretrained'])
-        
-    elif model_dict['model_name'] in ['MultiResolutionModel', 'MultiResolutionAutoencoder']:
-        param_names = {'patch_size', 'backbone_params', 'aspp_params'}
-        assert param_names.issubset(set(model_dict.keys()))
-
-        backbone_param_names = {'n_filters', 'kernel_sizes', 'paddings', 'pooling_sizes'}
-        assert backbone_param_names.issubset(set(model_dict['backbone_params'].keys()))
-        aspp_param_names = {'out_channels', 'kernel_sizes', 'pooling_sizes', 'n_linear_layers'}
-        assert aspp_param_names.issubset(set(model_dict['aspp_params'].keys()))
-
-        if model_dict['model_name'] == 'MultiResolutionModel':
-            model = MultiResolutionModel(
-                model_dict['input_shape'][0],
-                model_dict['patch_size'],
-                model_dict['output_shape'],
-                model_dict['backbone_params'], 
-                model_dict['aspp_params'])
-            
-        elif model_dict['model_name'] == 'MultiResolutionAutoencoder':
-                model = MultiResolutionAutoencoder(
-                model_dict['input_shape'][0],
-                model_dict['patch_size'],
-                model_dict['output_shape'],
-                model_dict['backbone_params'], 
-                model_dict['aspp_params'])
-    return model
-
 def setup_model(
     model_setup,
     train_occ_path=po_path,
@@ -220,6 +153,11 @@ def train_model(
         seed=seed) 
     model = model.to(dev)
 
+    receptive_fields = []
+    if "env" in model_setup.keys():
+        if model_setup["env"]["model_name"]== "MultiResolutionModel":
+            receptive_fields = [aspp.receptive_field for aspp in model.aspp_branches]
+
     # data loaders
     train_loader = torch.utils.data.DataLoader(train_data, shuffle=True, batch_size=batch_size, num_workers=num_workers_train)
     val_loader = torch.utils.data.DataLoader(val_data, shuffle=False, batch_size=batch_size, num_workers=num_workers_val)
@@ -245,7 +183,8 @@ def train_model(
                 'val_data': val_occ_path, 'n_species': train_data.n_species, 
                 'n_max_low_occ': n_max_low_occ, 
                 'n_species_low_occ': len(train_data.low_occ_species_idx),
-                'model': model_setup, 'embed_shape': embed_shape, 'epochs': n_epochs, 
+                'model': model_setup, 'receptive_fields': receptive_fields,
+                'embed_shape': embed_shape, 'epochs': n_epochs, 
                 'batch_size': batch_size, 'lr': learning_rate, 'weight_decay': weight_decay,
                 'optimizer':'SGD', 'loss': loss, 'lambda2': lambda2, 
                 'autoencoder_loss': autoencoder_loss_fn, 'val_loss': 'BCEloss', 'id': wandb_id
@@ -271,7 +210,7 @@ def train_model(
         print(f"EPOCH {epoch}") # (lr = {optimizer.param_groups[0]['lr']:.4f})")
 
         model.train()
-        train_loss_list = []
+        train_loss_list, train_classif_loss_list, train_reconstr_loss_list = [], [], []
         for po_inputs, bg_inputs, labels in tqdm(train_loader):
             labels = labels.to(torch.float32).to(dev) 
 
@@ -296,36 +235,41 @@ def train_model(
                     
             if random_bg_path is None:
                 if loss == 'weighted_loss':
-                    train_loss = loss_fn(y_pred, labels, species_weights)
+                    classif_loss = loss_fn(y_pred, labels, species_weights)
                 else:
-                    train_loss = loss_fn(y_pred, labels)
+                    classif_loss = loss_fn(y_pred, labels)
             else:
                 po_pred = y_pred[0:len(po_inputs[0])]
                 bg_pred = y_pred[len(po_inputs[0]):]
                 if loss == 'weighted_loss':
-                    train_loss = loss_fn(po_pred, labels, species_weights, lambda2, bg_pred)
+                    classif_loss = loss_fn(po_pred, labels, species_weights, lambda2, bg_pred)
                 else:
-                    train_loss = loss_fn(po_pred, labels, bg_pred)
+                    classif_loss = loss_fn(po_pred, labels, bg_pred)
             
             if autoencoder:
-                autoencoder_loss = np.mean([autoencoder_loss_fn(pred_patch, input_patch).cpu().detach() for pred_patch, input_patch in zip(xlist_decoded, input_patches)])
-                print(f"train loss = {train_loss}, reconstruction loss = {autoencoder_loss}")
-                train_loss += autoencoder_loss
+                reconstr_loss = [autoencoder_loss_fn(pred_patch, input_patch).cpu().detach() for pred_patch, input_patch in zip(xlist_decoded, input_patches)]
+                train_loss = classif_loss + np.sum(reconstr_loss)
+                train_classif_loss_list.append(classif_loss.cpu().detach())
+                train_reconstr_loss_list.append(reconstr_loss)
+            else:
+                train_loss = classif_loss
 
             train_loss_list.append(train_loss.cpu().detach())
-
+            
             # backward pass and weight update
             optimizer.zero_grad()
             train_loss.backward()
             optimizer.step()
         # scheduler.step()
         
-        avg_train_loss = np.array(train_loss_list).mean()
-        print(f"{epoch}) TRAIN LOSS={avg_train_loss}")
+        avg_train_loss = np.mean(train_loss_list)
+        avg_train_classif_loss = np.mean(train_classif_loss_list)
+        avg_train_reconstr_loss = np.mean(train_reconstr_loss_list, axis=0)
+        print(f"{epoch}) TRAIN LOSS={avg_train_loss} (classification loss={avg_train_classif_loss}, reconstruction loss={avg_train_reconstr_loss})")
 
         # evaluate model on validation set
         model.eval()
-        val_loss_list, labels_list, y_pred_list = [], [], []
+        val_loss_list, val_classif_loss_list, val_reconstr_loss_list, labels_list, y_pred_list = [], [], [], [], []
         for inputs, _, labels in tqdm(val_loader):
             labels = labels.to(torch.float32).to(dev) 
             labels_list.append(labels.cpu().detach().numpy())
@@ -347,32 +291,45 @@ def train_model(
             y_pred_list.append(y_pred.cpu().detach().numpy())
 
             # validation loss
-            val_loss = val_loss_fn(y_pred, labels).cpu().detach()
+            classif_loss = val_loss_fn(y_pred, labels).cpu().detach()
             if autoencoder:
-                autoencoder_loss = np.mean([autoencoder_loss_fn(pred_patch, input_patch).cpu().detach() for pred_patch, input_patch in zip(xlist_decoded, input_patches)])
-                print(f"val loss = {train_loss}, reconstruction loss = {autoencoder_loss}")
-                val_loss += autoencoder_loss
+                reconst_loss = [autoencoder_loss_fn(pred_patch, input_patch).cpu().detach() for pred_patch, input_patch in zip(xlist_decoded, input_patches)]
+                val_reconstr_loss_list.append(reconst_loss)
+                val_loss = classif_loss + np.sum(reconst_loss)
+            else:
+                val_loss = classif_loss
 
             val_loss_list.append(val_loss)
+            val_classif_loss_list.append(classif_loss)
             
-        avg_val_loss = np.array(val_loss_list).mean()
+        avg_val_loss = np.mean(val_loss_list)
+        avg_val_classif_loss = np.mean(val_classif_loss_list)
+        avg_val_reconstr_loss = np.mean(val_reconstr_loss_list, axis=0)
         labels = np.concatenate(labels_list)
         y_pred = np.concatenate(y_pred_list)
 
         # validation AUC
         auc = roc_auc_score(labels, y_pred)
         auc_low_occ = roc_auc_score(labels[:, train_data.low_occ_species_idx], y_pred[:, train_data.low_occ_species_idx])
-        print(f"\tVALIDATION LOSS={avg_val_loss} \tVALIDATION AUC={auc}")
+        print(f"\tVALIDATION LOSS={avg_val_loss} (classification loss={avg_val_classif_loss}, reconstruction loss={avg_val_reconstr_loss}) \nVALIDATION AUC={auc}")
 
         df = pd.DataFrame(train_data.species_counts, columns=['n_occ']).reset_index().rename(columns={'index':'species'})
         df['auc'] = [roc_auc_score(labels[:,i], y_pred[:,i]) for i in range(labels.shape[1])]
         df.to_csv(f"{modeldir}{run_name}/last_species_auc.csv", index=False)
 
         if log_wandb:
-            wandb.log({
-                "train_loss": avg_train_loss, "val_loss": avg_val_loss, 
-                "val_auc": auc, "val_auc_low_occ": auc_low_occ
-            })
+            wandb.log({"train_loss": avg_train_loss, "val_loss": avg_val_loss, "val_auc": auc, "val_auc_low_occ": auc_low_occ})
+            # if autoencoder:
+            #     wandb.log({"train_total_loss": avg_train_loss, "val_total_loss": avg_val_loss})
+            #     if len(avg_train_reconstr_loss) == 1:
+            #         wandb.log({"train_reconstr_loss_1": avg_train_reconstr_loss[0], "val_reconstr_loss_1": avg_val_reconstr_loss[0]})
+            #     elif len(avg_train_reconstr_loss) == 3:
+            #         wandb.log({
+            #             "train_reconstr_loss_1": avg_train_reconstr_loss[0], "train_reconstr_loss_2": avg_train_reconstr_loss[1], "train_reconstr_loss_3": avg_train_reconstr_loss[2],
+            #             "val_reconstr_loss_1": avg_val_reconstr_loss[0], "val_reconstr_loss_2": avg_val_reconstr_loss[1], "val_reconstr_loss_3": avg_val_reconstr_loss[2]
+            #         })
+            #     else:
+            #         print('cannot log reconstruction losses!')
 
         # model checkpoint
         torch.save({
@@ -444,15 +401,20 @@ if __name__ == "__main__":
         seed = config['seed'])
     
 
-# run_name = '0411_env6_3res_autoencoder'
+# run_name = '0417_sat128'
 # path_to_config = f"{modeldir}{run_name}/config.json"
 # with open(path_to_config, "r") as f: 
 #     config = json.load(f)
-
 # config = {k: v if v != "" else None for k,v in config.items()}
 # model_setup = {}
-# config['env_model']['covariates'] = [eval(f) for f in config['env_model']['covariates']]
-# model_setup['env'] = config['env_model']
+
+# if config['env_model'] is not None: 
+#     config['env_model']['covariates'] = [eval(f) for f in config['env_model']['covariates']]
+#     model_setup['env'] = config['env_model']
+
+# if config['sat_model'] is not None: 
+#     config['sat_model']['covariates'] = [eval(f) for f in config['sat_model']['covariates']]
+#     model_setup['sat'] = config['sat_model']
 
 # train_occ_path = eval(config['train_occ_path'])
 # random_bg_path = eval(config['random_bg_path']) if config['random_bg_path'] is not None else None
