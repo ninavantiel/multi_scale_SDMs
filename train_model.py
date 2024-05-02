@@ -46,6 +46,81 @@ def make_providers(covariate_paths_list, patch_size, flatten):
             providers.append(MultipleRasterPatchProvider(cov, size=patch_size, flatten=flatten))
     return providers
 
+def make_model(model_dict):
+    assert {'input_shape', 'output_shape'}.issubset(set(model_dict.keys()))
+
+    if model_dict['model_name'] == 'MLP':
+        param_names = {'n_layers', 'width', 'dropout'}
+        assert param_names.issubset(set(model_dict.keys()))
+
+        model = MLP(model_dict['input_shape'][0],
+                    model_dict['output_shape'], 
+                    model_dict['n_layers'], 
+                    model_dict['width'], 
+                    model_dict['dropout'])
+        
+    elif model_dict['model_name'] == 'CNN':
+        param_names = {
+            'patch_size', 'n_conv_layers', 'n_filters', 'width', 'kernel_size', 
+            'padding', 'pooling_size', 'dropout', 'pool_only_last'
+        }
+        assert param_names.issubset(set(model_dict.keys()))
+        assert model_dict['n_conv_layers'] == len(model_dict['n_filters'])
+
+        model = ShallowCNN(model_dict['input_shape'][0],
+                           model_dict['patch_size'], 
+                           model_dict['output_shape'],
+                           model_dict['n_conv_layers'], 
+                           model_dict['n_filters'], 
+                           model_dict['width'], 
+                           model_dict['kernel_size'], 
+                           model_dict['padding'],
+                           model_dict['pooling_size'], 
+                           model_dict['dropout'],
+                           model_dict['pool_only_last'])
+        
+    elif model_dict['model_name'] == 'ResNet':
+        assert 'pretrained' in list(model_dict.keys())
+
+        model = get_resnet(
+            model_dict['output_shape'], 
+            model_dict['input_shape'][0], 
+            model_dict['pretrained'])
+        
+    elif model_dict['model_name'] in ['MultiResolutionModel', 'MultiResolutionAutoencoder']:
+        param_names = {'backbone', 'patch_size', 'backbone_params', 'aspp_params'}
+        assert param_names.issubset(set(model_dict.keys()))
+
+        assert model_dict['backbone'] in ['CNN', 'ResNet']
+        if model_dict['backbone'] == 'CNN':
+            backbone_param_names = {'n_filters', 'kernel_sizes', 'paddings', 'pooling_sizes'}
+        elif model_dict['backbone'] == 'ResNet':
+            backbone_param_names = {'pretrained'}
+        assert backbone_param_names.issubset(set(model_dict['backbone_params'].keys()))
+
+        aspp_param_names = {'out_channels', 'out_size', 'kernel_sizes', 'dilations', 'pooling_sizes', 'n_linear_layers'}
+        assert aspp_param_names.issubset(set(model_dict['aspp_params'].keys()))
+
+        if model_dict['model_name'] == 'MultiResolutionModel':
+            model = MultiResolutionModel(
+                model_dict['input_shape'][0],
+                model_dict['patch_size'],
+                model_dict['output_shape'],
+                model_dict['backbone'],
+                model_dict['backbone_params'], 
+                model_dict['aspp_params'])
+            
+        elif model_dict['model_name'] == 'MultiResolutionAutoencoder':
+                model = MultiResolutionAutoencoder(
+                model_dict['input_shape'][0],
+                model_dict['patch_size'],
+                model_dict['output_shape'],
+                model_dict['backbone'],
+                model_dict['backbone_params'], 
+                model_dict['aspp_params'])
+
+    return model
+
 def setup_model(
     model_setup,
     train_occ_path=po_path,
@@ -164,10 +239,10 @@ def train_model(
 
     # loss functions
     loss_fn = eval(loss)
-    if autoencoder: 
-        autoencoder_loss_fn = nn.L1Loss()
-    else: 
-        autoencoder_loss_fn = None
+    # if autoencoder: 
+    #     autoencoder_loss_fn = nn.L1Loss()
+    # else: 
+    #     autoencoder_loss_fn = None
     species_weights = torch.tensor(train_data.species_weights).to(dev)
     val_loss_fn = nn.BCELoss()
 
@@ -187,7 +262,8 @@ def train_model(
                 'embed_shape': embed_shape, 'epochs': n_epochs, 
                 'batch_size': batch_size, 'lr': learning_rate, 'weight_decay': weight_decay,
                 'optimizer':'SGD', 'loss': loss, 'lambda2': lambda2, 
-                'autoencoder_loss': autoencoder_loss_fn, 'val_loss': 'BCEloss', 'id': wandb_id
+                # 'autoencoder_loss': autoencoder_loss_fn, 
+                'val_loss': 'BCEloss', 'id': wandb_id
             }
         )
         
@@ -209,6 +285,7 @@ def train_model(
     for epoch in range(start_epoch, n_epochs):
         print(f"EPOCH {epoch}") # (lr = {optimizer.param_groups[0]['lr']:.4f})")
 
+        # import pdb; pdb.set_trace()
         model.train()
         train_loss_list, train_classif_loss_list, train_reconstr_loss_list = [], [], []
         for po_inputs, bg_inputs, labels in tqdm(train_loader):
@@ -226,12 +303,12 @@ def train_model(
                 else:
                     inputs = torch.cat((po_inputs[0], bg_inputs[0]), 0).to(torch.float32).to(dev)
 
-                if autoencoder:
-                    input_patches = [transforms.CenterCrop(size=aspp.receptive_field)(inputs) for aspp in model.aspp_branches][::-1]
-                    y_pred, xlist_decoded = model(inputs)
-                    y_pred = torch.sigmoid(y_pred)
-                else:
-                    y_pred = torch.sigmoid(model(inputs))
+                # if autoencoder:
+                #     input_patches = [transforms.CenterCrop(size=aspp.receptive_field)(inputs) for aspp in model.aspp_branches][::-1]
+                #     y_pred, xlist_decoded = model(inputs)
+                #     y_pred = torch.sigmoid(y_pred)
+                # else:
+                y_pred = torch.sigmoid(model(inputs))
                     
             if random_bg_path is None:
                 if loss == 'weighted_loss':
@@ -245,14 +322,15 @@ def train_model(
                     classif_loss = loss_fn(po_pred, labels, species_weights, lambda2, bg_pred)
                 else:
                     classif_loss = loss_fn(po_pred, labels, bg_pred)
+            train_loss = classif_loss
             
-            if autoencoder:
-                reconstr_loss = [autoencoder_loss_fn(pred_patch, input_patch).cpu().detach() for pred_patch, input_patch in zip(xlist_decoded, input_patches)]
-                train_loss = classif_loss + np.sum(reconstr_loss)
-                train_classif_loss_list.append(classif_loss.cpu().detach())
-                train_reconstr_loss_list.append(reconstr_loss)
-            else:
-                train_loss = classif_loss
+            # if autoencoder:
+            #     reconstr_loss = [autoencoder_loss_fn(pred_patch, input_patch).cpu().detach() for pred_patch, input_patch in zip(xlist_decoded, input_patches)]
+            #     train_loss = classif_loss + np.sum(reconstr_loss)
+            #     train_classif_loss_list.append(classif_loss.cpu().detach())
+            #     train_reconstr_loss_list.append(reconstr_loss)
+            # else:
+            #     train_loss = classif_loss
 
             train_loss_list.append(train_loss.cpu().detach())
             
@@ -263,9 +341,12 @@ def train_model(
         # scheduler.step()
         
         avg_train_loss = np.mean(train_loss_list)
-        avg_train_classif_loss = np.mean(train_classif_loss_list)
-        avg_train_reconstr_loss = np.mean(train_reconstr_loss_list, axis=0)
-        print(f"{epoch}) TRAIN LOSS={avg_train_loss} (classification loss={avg_train_classif_loss}, reconstruction loss={avg_train_reconstr_loss})")
+        # if autoencoder:
+        #     avg_train_classif_loss = np.mean(train_classif_loss_list)
+        #     avg_train_reconstr_loss = np.mean(train_reconstr_loss_list, axis=0)
+        #     print(f"{epoch}) TRAIN LOSS={avg_train_loss} (classification loss={avg_train_classif_loss}, reconstruction loss={avg_train_reconstr_loss})")
+        # else:
+        print(f"{epoch}) TRAIN LOSS={avg_train_loss}")
 
         # evaluate model on validation set
         model.eval()
@@ -281,37 +362,41 @@ def train_model(
             else:
                 inputs = inputs[0].to(torch.float32).to(dev)
 
-                if autoencoder:
-                    input_patches = [transforms.CenterCrop(size=aspp.receptive_field)(inputs) for aspp in model.aspp_branches][::-1]
-                    y_pred, xlist_decoded = model(inputs)
-                    y_pred = torch.sigmoid(y_pred)
-                else:
-                    y_pred = torch.sigmoid(model(inputs))
+                # if autoencoder:
+                #     input_patches = [transforms.CenterCrop(size=aspp.receptive_field)(inputs) for aspp in model.aspp_branches][::-1]
+                #     y_pred, xlist_decoded = model(inputs)
+                #     y_pred = torch.sigmoid(y_pred)
+                # else:
+                y_pred = torch.sigmoid(model(inputs))
 
             y_pred_list.append(y_pred.cpu().detach().numpy())
 
             # validation loss
-            classif_loss = val_loss_fn(y_pred, labels).cpu().detach()
-            if autoencoder:
-                reconst_loss = [autoencoder_loss_fn(pred_patch, input_patch).cpu().detach() for pred_patch, input_patch in zip(xlist_decoded, input_patches)]
-                val_reconstr_loss_list.append(reconst_loss)
-                val_loss = classif_loss + np.sum(reconst_loss)
-            else:
-                val_loss = classif_loss
+            val_loss = val_loss_fn(y_pred, labels).cpu().detach()
+            # if autoencoder:
+            #     reconst_loss = [autoencoder_loss_fn(pred_patch, input_patch).cpu().detach() for pred_patch, input_patch in zip(xlist_decoded, input_patches)]
+            #     val_reconstr_loss_list.append(reconst_loss)
+            #     val_loss = classif_loss + np.sum(reconst_loss)
+            # else:
+            #     val_loss = classif_loss
 
             val_loss_list.append(val_loss)
             val_classif_loss_list.append(classif_loss)
             
         avg_val_loss = np.mean(val_loss_list)
-        avg_val_classif_loss = np.mean(val_classif_loss_list)
-        avg_val_reconstr_loss = np.mean(val_reconstr_loss_list, axis=0)
         labels = np.concatenate(labels_list)
         y_pred = np.concatenate(y_pred_list)
 
         # validation AUC
         auc = roc_auc_score(labels, y_pred)
         auc_low_occ = roc_auc_score(labels[:, train_data.low_occ_species_idx], y_pred[:, train_data.low_occ_species_idx])
-        print(f"\tVALIDATION LOSS={avg_val_loss} (classification loss={avg_val_classif_loss}, reconstruction loss={avg_val_reconstr_loss}) \nVALIDATION AUC={auc}")
+
+        # if autoencoder:
+        #     avg_val_classif_loss = np.mean(val_classif_loss_list)
+        #     avg_val_reconstr_loss = np.mean(val_reconstr_loss_list, axis=0)
+        #     print(f"\tVALIDATION LOSS={avg_val_loss} (classification loss={avg_val_classif_loss}, reconstruction loss={avg_val_reconstr_loss}) \nVALIDATION AUC={auc}")
+        # else:
+        print(f"\tVALIDATION LOSS={avg_val_loss} \nVALIDATION AUC={auc}")
 
         df = pd.DataFrame(train_data.species_counts, columns=['n_occ']).reset_index().rename(columns={'index':'species'})
         df['auc'] = [roc_auc_score(labels[:,i], y_pred[:,i]) for i in range(labels.shape[1])]

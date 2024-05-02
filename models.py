@@ -126,9 +126,9 @@ class ASPP_branch(nn.Module):
         receptive_field = 1
         for i, (k, d, p) in enumerate(zip(kernel_sizes, dilations, pooling_sizes)):
             if i == 0: 
-                conv_layers.append(nn.Conv2d(in_channels, out_channels, k, dilation=d)) #, padding = (k-1)//2)
+                conv_layers.append(nn.Conv2d(in_channels, out_channels, k, dilation=d)) #padding = (k-1)//2)
             else:
-                conv_layers.append(nn.Conv2d(out_channels, out_channels, k, dilation=d)) #padding = (k-1)//2),
+                conv_layers.append(nn.Conv2d(out_channels, out_channels, k, dilation=d)) #padding = (k-1)//2)
             conv_layers.append(nn.ReLU())
             conv_layers.append(nn.MaxPool2d(kernel_size=p, stride=p))
             receptive_field = (receptive_field + (k-1)*d) * p
@@ -195,39 +195,77 @@ class CNN(nn.Module):
 
         self.layers = nn.Sequential(*layers)
         self.out_patch_size = patch_size
-        self.out_n_channels = n_filters[-1]
+        self.out_channels = n_filters[-1]
 
     def forward(self, x):
         for layer in self.layers:
             x = layer(x)
         return x
     
+class ResNet_3layers(nn.Module):
+    def __init__(self, in_channels, pretrained): 
+        super(ResNet_3layers, self).__init__()
+        if pretrained:
+            model = models.resnet18(weights='ResNet18_Weights.IMAGENET1K_V1')
+            weights = model.conv1.weight.data.clone()
+        else:
+            model = models.resnet18()
+
+        # if not pretrained or in_channels != 3:
+            self.layer0 = nn.Sequential(
+                nn.Conv2d(in_channels, 64, 3, stride=1, padding=1, bias=False),
+                nn.BatchNorm2d(64),
+                nn.ReLU(inplace=True))
+                # nn.MaxPool2d(kernel_size=3, stride=2, padding=1))
+            if pretrained:
+                self.layer0[0].weight.data[:, :3, :, :] = weights
+                self.layer0[0].weight.data[:, 3, :, :] = weights[:, 0, :, :]
+        
+        self.layer1 = model.layer1
+        self.layer2 = model.layer2
+        # self.layer3 = model.layer3
+        # self.layer4 = model.layer4
+        # self.fc = nn.Linear(512, target_size)
+
+        self.out_channels = self.layer2[-1].conv2.out_channels
+
+    def forward(self, x):
+        x = self.layer0(x)
+        x = self.layer1(x)
+        x = self.layer2(x)
+        return x
+    
 class MultiResolutionModel(nn.Module):
-    def __init__(self, in_channels, in_patch_size, target_size, cnn_params, aspp_params):
+    def __init__(self, in_channels, in_patch_size, target_size, backbone, backbone_params, aspp_params):
         super(MultiResolutionModel, self).__init__()        
         self.target_size = target_size
 
-        self.backbone = CNN(
-            in_channels, in_patch_size, cnn_params['n_filters'], cnn_params['kernel_sizes'], 
-            cnn_params['paddings'], cnn_params['pooling_sizes']) 
+        if backbone == 'CNN':
+            self.backbone = CNN(
+                in_channels, in_patch_size, backbone_params['n_filters'], backbone_params['kernel_sizes'], 
+                backbone_params['paddings'], backbone_params['pooling_sizes']) 
+        elif backbone == 'ResNet':
+            self.backbone = ResNet_3layers(in_channels, backbone_params['pretrained'])
 
         self.aspp_branches = nn.ModuleList([ASPP_branch(
-            self.backbone.out_n_channels, aspp_params['out_channels'], 
-            k, d, p, aspp_params['n_linear_layers'], aspp_params['out_size']
+            self.backbone.out_channels, aspp_params['out_channels'], 
+            k, d, p, aspp_params['n_linear_layers'], target_size#aspp_params['out_size']
         ) for k, d, p in zip(aspp_params['kernel_sizes'], aspp_params['dilations'], aspp_params['pooling_sizes'])])
 
-        self.linear = nn.Linear(aspp_params['out_size']*len(aspp_params['kernel_sizes']), target_size)
+        # self.linear = nn.Linear(aspp_params['out_size']*len(aspp_params['kernel_sizes']), target_size)
+        self.linear = nn.Linear(len(aspp_params['kernel_sizes']), 1)
         
     def forward(self, x):
         x = self.backbone(x)
         xlist = [aspp(x) for aspp in self.aspp_branches]
-        x = torch.cat(xlist, dim=1)
-        x = self.linear(x)
+        # x = torch.cat(xlist, dim=1)
+        x = torch.stack(xlist, dim=2)
+        x = torch.squeeze(self.linear(x))
         return x
     
 class MultiResolutionAutoencoder(MultiResolutionModel):
-    def __init__(self, in_channels, in_patch_size, target_size, cnn_params, aspp_params):
-        super(MultiResolutionAutoencoder, self).__init__(in_channels, in_patch_size, target_size, cnn_params, aspp_params)
+    def __init__(self, in_channels, in_patch_size, target_size, backbone, backbone_params, aspp_params):
+        super(MultiResolutionAutoencoder, self).__init__(backbone, in_channels, in_patch_size, target_size, backbone, backbone_params, aspp_params)
         
         self.decoder_branches = nn.ModuleList([decoder_branch(
             aspp_params['n_linear_layers'], self.target_size, 
@@ -242,71 +280,3 @@ class MultiResolutionAutoencoder(MultiResolutionModel):
 
         xlist = [decoder(xl) for xl, decoder in zip(xlist, self.decoder_branches)]
         return x, xlist
-
-def make_model(model_dict):
-    assert {'input_shape', 'output_shape'}.issubset(set(model_dict.keys()))
-
-    if model_dict['model_name'] == 'MLP':
-        param_names = {'n_layers', 'width', 'dropout'}
-        assert param_names.issubset(set(model_dict.keys()))
-
-        model = MLP(model_dict['input_shape'][0],
-                    model_dict['output_shape'], 
-                    model_dict['n_layers'], 
-                    model_dict['width'], 
-                    model_dict['dropout'])
-        
-    elif model_dict['model_name'] == 'CNN':
-        param_names = {
-            'patch_size', 'n_conv_layers', 'n_filters', 'width', 'kernel_size', 
-            'padding', 'pooling_size', 'dropout', 'pool_only_last'
-        }
-        assert param_names.issubset(set(model_dict.keys()))
-        assert model_dict['n_conv_layers'] == len(model_dict['n_filters'])
-
-        model = ShallowCNN(model_dict['input_shape'][0],
-                           model_dict['patch_size'], 
-                           model_dict['output_shape'],
-                           model_dict['n_conv_layers'], 
-                           model_dict['n_filters'], 
-                           model_dict['width'], 
-                           model_dict['kernel_size'], 
-                           model_dict['padding'],
-                           model_dict['pooling_size'], 
-                           model_dict['dropout'],
-                           model_dict['pool_only_last'])
-        
-    elif model_dict['model_name'] == 'ResNet':
-        assert 'pretrained' in list(model_dict.keys())
-
-        model = get_resnet(
-            model_dict['output_shape'], 
-            model_dict['input_shape'][0], 
-            model_dict['pretrained'])
-        
-    elif model_dict['model_name'] in ['MultiResolutionModel', 'MultiResolutionAutoencoder']:
-        param_names = {'patch_size', 'backbone_params', 'aspp_params'}
-        assert param_names.issubset(set(model_dict.keys()))
-
-        backbone_param_names = {'n_filters', 'kernel_sizes', 'paddings', 'pooling_sizes'}
-        assert backbone_param_names.issubset(set(model_dict['backbone_params'].keys()))
-        aspp_param_names = {'out_channels', 'out_size', 'kernel_sizes', 'dilations', 'pooling_sizes', 'n_linear_layers'}
-        assert aspp_param_names.issubset(set(model_dict['aspp_params'].keys()))
-
-        if model_dict['model_name'] == 'MultiResolutionModel':
-            model = MultiResolutionModel(
-                model_dict['input_shape'][0],
-                model_dict['patch_size'],
-                model_dict['output_shape'],
-                model_dict['backbone_params'], 
-                model_dict['aspp_params'])
-            
-        elif model_dict['model_name'] == 'MultiResolutionAutoencoder':
-                model = MultiResolutionAutoencoder(
-                model_dict['input_shape'][0],
-                model_dict['patch_size'],
-                model_dict['output_shape'],
-                model_dict['backbone_params'], 
-                model_dict['aspp_params'])
-
-    return model
