@@ -14,10 +14,10 @@ from data.Datasets import PatchesDatasetCooccurrences
 from models import *
 from losses import *
 
-datadir = 'data/full_data/'
+datadir = 'data/full_data/' #glc24_data
 modeldir = 'models/'
 
-po_path = datadir+'Presence_only_occurrences/Presences_only_train_sampled_100_percent_min_1_occurrences.csv'
+po_path = datadir+'Presence_only_occurrences/Presences_only_train_sampled_100_percent_min_1_occurrences.csv' #PresenceOnlyOccurrences/GLC24-PO-metadata-train.csv
 po_path_sampled_25 = datadir+'Presence_only_occurrences/Presences_only_train_sampled_25_percent_min_1_occurrences.csv'
 po_path_sampled_50 = datadir+'Presence_only_occurrences/Presences_only_train_sampled_50_percent_min_0_occurrences.csv'
 bg_path = datadir+'Presence_only_occurrences/Pseudoabsence_locations_bioclim_soil.csv'
@@ -28,7 +28,6 @@ bioclim_dir = datadir+'EnvironmentalRasters/Climate/BioClimatic_Average_1981-201
 soil_dir = datadir+'EnvironmentalRasters/Soilgrids/'
 human_footprint_path = datadir+'EnvironmentalRasters/HumanFootprint/summarized/HFP2009_WGS84.tif'
 landcover_path = datadir+'EnvironmentalRasters/LandCover/LandCover_MODIS_Terra-Aqua_500m.tif'
-# elevation_path = datadir+'EnvironmentalRasters/Elevation/ASTER_Elevation.tif'
 
 def make_providers(covariate_paths_list, patch_size, flatten):
     print(f"\nMaking patch providers with size={patch_size}x{patch_size}, flatten={flatten} for covariates:")
@@ -111,7 +110,7 @@ def make_model(model_dict):
                 model_dict['aspp_params'])
             
         elif model_dict['model_name'] == 'MultiResolutionAutoencoder':
-                model = MultiResolutionAutoencoder(
+            model = MultiResolutionAutoencoder(
                 model_dict['input_shape'][0],
                 model_dict['patch_size'],
                 model_dict['output_shape'],
@@ -228,10 +227,10 @@ def train_model(
         seed=seed) 
     model = model.to(dev)
 
-    receptive_fields = []
-    if "env" in model_setup.keys():
-        if model_setup["env"]["model_name"]== "MultiResolutionModel":
-            receptive_fields = [aspp.receptive_field for aspp in model.aspp_branches]
+    # receptive_fields = []
+    # if "env" in model_setup.keys():
+    #     if model_setup["env"]["model_name"] == "MultiResolutionModel":
+    #         receptive_fields = [aspp.receptive_field for aspp in model.aspp_branches]
 
     # data loaders
     train_loader = torch.utils.data.DataLoader(train_data, shuffle=True, batch_size=batch_size, num_workers=num_workers_train)
@@ -258,7 +257,7 @@ def train_model(
                 'val_data': val_occ_path, 'n_species': train_data.n_species, 
                 'n_max_low_occ': n_max_low_occ, 
                 'n_species_low_occ': len(train_data.low_occ_species_idx),
-                'model': model_setup, 'receptive_fields': receptive_fields,
+                'model': model_setup, #'receptive_fields': receptive_fields,
                 'embed_shape': embed_shape, 'epochs': n_epochs, 
                 'batch_size': batch_size, 'lr': learning_rate, 'weight_decay': weight_decay,
                 'optimizer':'SGD', 'loss': loss, 'lambda2': lambda2, 
@@ -486,7 +485,7 @@ if __name__ == "__main__":
         seed = config['seed'])
     
 
-# run_name = '0417_sat128'
+# run_name = '0510_multimodel_multires'
 # path_to_config = f"{modeldir}{run_name}/config.json"
 # with open(path_to_config, "r") as f: 
 #     config = json.load(f)

@@ -249,17 +249,17 @@ class MultiResolutionModel(nn.Module):
 
         self.aspp_branches = nn.ModuleList([ASPP_branch(
             self.backbone.out_channels, aspp_params['out_channels'], 
-            k, d, p, aspp_params['n_linear_layers'], target_size#aspp_params['out_size']
+            k, d, p, aspp_params['n_linear_layers'], aspp_params['out_size']
         ) for k, d, p in zip(aspp_params['kernel_sizes'], aspp_params['dilations'], aspp_params['pooling_sizes'])])
 
-        # self.linear = nn.Linear(aspp_params['out_size']*len(aspp_params['kernel_sizes']), target_size)
-        self.linear = nn.Linear(len(aspp_params['kernel_sizes']), 1)
+        self.linear = nn.Linear(aspp_params['out_size']*len(aspp_params['kernel_sizes']), target_size)
+        # self.linear = nn.Linear(len(aspp_params['kernel_sizes']), 1)
         
     def forward(self, x):
         x = self.backbone(x)
         xlist = [aspp(x) for aspp in self.aspp_branches]
-        # x = torch.cat(xlist, dim=1)
-        x = torch.stack(xlist, dim=2)
+        x = torch.cat(xlist, dim=1)
+        # x = torch.stack(xlist, dim=2)
         x = torch.squeeze(self.linear(x))
         return x
     
