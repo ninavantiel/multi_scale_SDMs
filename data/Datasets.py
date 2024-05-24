@@ -54,7 +54,8 @@ class PatchesDatasetCooccurrences(Dataset):
         label_name='speciesId',
         item_columns=['lat','lon','patchID','dayOfYear'],
         pseudoabsences=None,
-        n_low_occ=50
+        n_low_occ=50,
+        sep=';'
     ):
         self.occurrences = Path(occurrences)
         self.label_name = label_name
@@ -62,7 +63,7 @@ class PatchesDatasetCooccurrences(Dataset):
         self.pseudoabsences = pseudoabsences
         self.n_low_occ = n_low_occ
 
-        df = pd.read_csv(self.occurrences, sep=";", header='infer', low_memory=False)
+        df = pd.read_csv(self.occurrences, sep=sep, header='infer', low_memory=False)
         if species is None: 
             self.species = np.unique(df[label_name].values)
         else: 

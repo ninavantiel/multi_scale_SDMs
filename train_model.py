@@ -8,133 +8,55 @@ import pandas as pd
 from tqdm import tqdm
 from sklearn.metrics import roc_auc_score
 
-from util import seed_everything
+from util import *
+from losses import *
+from models import MultimodalModel
 from data.PatchesProviders import RasterPatchProvider, MultipleRasterPatchProvider, JpegPatchProvider
 from data.Datasets import PatchesDatasetCooccurrences
-from models import *
-from losses import *
 
-datadir = 'data/full_data/' #glc24_data
+datadir = 'data/' 
 modeldir = 'models/'
 
-po_path = datadir+'Presence_only_occurrences/Presences_only_train_sampled_100_percent_min_1_occurrences.csv' #PresenceOnlyOccurrences/GLC24-PO-metadata-train.csv
-po_path_sampled_25 = datadir+'Presence_only_occurrences/Presences_only_train_sampled_25_percent_min_1_occurrences.csv'
-po_path_sampled_50 = datadir+'Presence_only_occurrences/Presences_only_train_sampled_50_percent_min_0_occurrences.csv'
-bg_path = datadir+'Presence_only_occurrences/Pseudoabsence_locations_bioclim_soil.csv'
-pa_path = datadir+'Presence_Absence_surveys/Presences_Absences_train.csv'
+# po_path = datadir+'Presence_only_occurrences/Presences_only_train_sampled_100_percent_min_1_occurrences.csv' #PresenceOnlyOccurrences/GLC24-PO-metadata-train.csv
+# po_path_sampled_25 = datadir+'Presence_only_occurrences/Presences_only_train_sampled_25_percent_min_1_occurrences.csv'
+# po_path_sampled_50 = datadir+'Presence_only_occurrences/Presences_only_train_sampled_50_percent_min_0_occurrences.csv'
+# bg_path = datadir+'Presence_only_occurrences/Pseudoabsence_locations_bioclim_soil.csv'
+# pa_path = datadir+'Presence_Absence_surveys/Presences_Absences_train.csv'
 
-sat_dir = datadir+'SatelliteImages/'
-bioclim_dir = datadir+'EnvironmentalRasters/Climate/BioClimatic_Average_1981-2010/'
-soil_dir = datadir+'EnvironmentalRasters/Soilgrids/'
-human_footprint_path = datadir+'EnvironmentalRasters/HumanFootprint/summarized/HFP2009_WGS84.tif'
-landcover_path = datadir+'EnvironmentalRasters/LandCover/LandCover_MODIS_Terra-Aqua_500m.tif'
-
-def make_providers(covariate_paths_list, patch_size, flatten):
-    print(f"\nMaking patch providers with size={patch_size}x{patch_size}, flatten={flatten} for covariates:")
-    providers = []
-    for cov in covariate_paths_list:
-        print(f"\t - {cov}")
-        if 'SatelliteImages' in cov:
-            if flatten and patch_size != 1: 
-                print("jpeg patch provider for satellite images cannot flatten image patches")
-                return
-            providers.append(JpegPatchProvider(cov, size=patch_size))
-        elif '.tif' in cov:
-            providers.append(RasterPatchProvider(cov, size=patch_size, flatten=flatten))
-        else:
-            providers.append(MultipleRasterPatchProvider(cov, size=patch_size, flatten=flatten))
-    return providers
-
-def make_model(model_dict):
-    assert {'input_shape', 'output_shape'}.issubset(set(model_dict.keys()))
-
-    if model_dict['model_name'] == 'MLP':
-        param_names = {'n_layers', 'width', 'dropout'}
-        assert param_names.issubset(set(model_dict.keys()))
-
-        model = MLP(model_dict['input_shape'][0],
-                    model_dict['output_shape'], 
-                    model_dict['n_layers'], 
-                    model_dict['width'], 
-                    model_dict['dropout'])
-        
-    elif model_dict['model_name'] == 'CNN':
-        param_names = {
-            'patch_size', 'n_conv_layers', 'n_filters', 'width', 'kernel_size', 
-            'padding', 'pooling_size', 'dropout', 'pool_only_last'
-        }
-        assert param_names.issubset(set(model_dict.keys()))
-        assert model_dict['n_conv_layers'] == len(model_dict['n_filters'])
-
-        model = ShallowCNN(model_dict['input_shape'][0],
-                           model_dict['patch_size'], 
-                           model_dict['output_shape'],
-                           model_dict['n_conv_layers'], 
-                           model_dict['n_filters'], 
-                           model_dict['width'], 
-                           model_dict['kernel_size'], 
-                           model_dict['padding'],
-                           model_dict['pooling_size'], 
-                           model_dict['dropout'],
-                           model_dict['pool_only_last'])
-        
-    elif model_dict['model_name'] == 'ResNet':
-        assert 'pretrained' in list(model_dict.keys())
-
-        model = get_resnet(
-            model_dict['output_shape'], 
-            model_dict['input_shape'][0], 
-            model_dict['pretrained'])
-        
-    elif model_dict['model_name'] in ['MultiResolutionModel', 'MultiResolutionAutoencoder']:
-        param_names = {'backbone', 'patch_size', 'backbone_params', 'aspp_params'}
-        assert param_names.issubset(set(model_dict.keys()))
-
-        assert model_dict['backbone'] in ['CNN', 'ResNet']
-        if model_dict['backbone'] == 'CNN':
-            backbone_param_names = {'n_filters', 'kernel_sizes', 'paddings', 'pooling_sizes'}
-        elif model_dict['backbone'] == 'ResNet':
-            backbone_param_names = {'pretrained'}
-        assert backbone_param_names.issubset(set(model_dict['backbone_params'].keys()))
-
-        aspp_param_names = {'out_channels', 'out_size', 'kernel_sizes', 'dilations', 'pooling_sizes', 'n_linear_layers'}
-        assert aspp_param_names.issubset(set(model_dict['aspp_params'].keys()))
-
-        if model_dict['model_name'] == 'MultiResolutionModel':
-            model = MultiResolutionModel(
-                model_dict['input_shape'][0],
-                model_dict['patch_size'],
-                model_dict['output_shape'],
-                model_dict['backbone'],
-                model_dict['backbone_params'], 
-                model_dict['aspp_params'])
-            
-        elif model_dict['model_name'] == 'MultiResolutionAutoencoder':
-            model = MultiResolutionAutoencoder(
-                model_dict['input_shape'][0],
-                model_dict['patch_size'],
-                model_dict['output_shape'],
-                model_dict['backbone'],
-                model_dict['backbone_params'], 
-                model_dict['aspp_params'])
-
-    return model
+# sat_dir = datadir+'SatelliteImages/'
+# bioclim_dir = datadir+'EnvironmentalRasters/Climate/BioClimatic_Average_1981-2010/'
+# soil_dir = datadir+'EnvironmentalRasters/Soilgrids/'
+# human_footprint_path = datadir+'EnvironmentalRasters/HumanFootprint/summarized/HFP2009_WGS84.tif'
+# landcover_path = datadir+'EnvironmentalRasters/LandCover/LandCover_MODIS_Terra-Aqua_500m.tif'
 
 def setup_model(
-    model_setup,
-    train_occ_path=po_path,
-    random_bg_path=None,
-    val_occ_path=pa_path,
-    n_max_low_occ=50,
-    embed_shape=None,
-    learning_rate=1e-3,
-    weight_decay=0,
-    seed=42
+    env_model,
+    sat_model,
+    dataset,
+    random_bg,
+    # train_occ_path,
+    # random_bg_path,
+    # val_occ_path,
+    n_max_low_occ,
+    embed_shape,
+    learning_rate,
+    weight_decay,
+    seed
 ):
     seed_everything(seed)
+    
+    # make model setup dictionary
+    model_setup = {}
+    if env_model is not None: 
+        env_model['covariates'] = [get_path_to(cov, dataset, datadir) for cov in env_model['covariates']]
+        model_setup['env'] = env_model
+    if sat_model is not None: 
+        sat_model['covariates'] = [get_path_to(cov, dataset, datadir) for cov in sat_model['covariates']]
+        model_setup['sat'] = sat_model
+
     assert len(model_setup) <= 2
     multimodal = (len(model_setup) == 2)
-    if multimodal: assert random_bg_path is None
+    if multimodal: assert random_bg is False
     
     if list(model_setup.values())[0]['model_name'] == 'MultiResolutionAutoencoder': 
         assert multimodal == False
@@ -142,21 +64,57 @@ def setup_model(
     else: 
         autoencoder = False
 
+    if dataset == 'glc23':
+        sep = ';'
+        item_columns=['lat','lon','patchID','dayOfYear']
+        item_columns_val=item_columns
+        sat_id_col = 'patchID'
+        select_sat_train=['rgb','nir']
+    elif dataset == 'glc24':
+        sep = ','
+        item_columns=['lat','lon','surveyId','dayOfYear']
+        item_columns_val=['lat','lon','surveyId']
+        sat_id_col = 'surveyId'
+        select_sat_train=['po_train_patches_rgb','po_train_patches_nir']
+        select_sat_val=['pa_train_patches_rgb','pa_train_patches_nir']
+
     # covariate patch providers 
-    providers = []
-    for model_dict in model_setup.values():
+    train_providers = []
+    for model_name, model_dict in model_setup.items():
         flatten = True if model_dict['model_name'] == 'MLP' else False 
-        providers.append(make_providers(
-            model_dict['covariates'], model_dict['patch_size'], flatten
-        ))
+        if model_name == 'env':
+            train_providers.append(make_providers(model_dict['covariates'], model_dict['patch_size'], flatten))
+        elif model_name == 'sat':
+            train_providers.append(make_providers(model_dict['covariates'], model_dict['patch_size'], flatten, sat_id_col, select_sat_train))
+
+    if dataset == 'glc23':
+        val_providers = train_providers
+    elif dataset == 'glc24':
+        val_providers = []
+        for model_name, model_dict in model_setup.items():
+            flatten = True if model_dict['model_name'] == 'MLP' else False 
+            if model_name == 'env':
+                val_providers.append(make_providers(model_dict['covariates'], model_dict['patch_size'], flatten))
+            elif model_name == 'sat':
+                val_providers.append(make_providers(model_dict['covariates'], model_dict['patch_size'], flatten, select_sat_val))
+
+    # get paths to data for given dataset
+    train_occ_path = get_path_to("po", dataset, datadir)
+    if random_bg:
+        random_bg_path = get_path_to("random_bg", dataset, datadir)
+    else:
+        random_bg_path = None
+    val_occ_path = get_path_to("pa", dataset, datadir)
 
     # training data
     print("\nMaking dataset for training occurrences")
     train_data = PatchesDatasetCooccurrences(
         occurrences=train_occ_path, 
-        providers=providers, 
+        providers=train_providers, 
+        item_columns=item_columns,
         pseudoabsences=random_bg_path, 
-        n_low_occ=n_max_low_occ
+        n_low_occ=n_max_low_occ,
+        sep=sep
     )
 
     for i, key in enumerate(model_setup.keys()):
@@ -172,7 +130,8 @@ def setup_model(
     print("\nMaking dataset for validation occurrences")
     val_data = PatchesDatasetCooccurrences(
         occurrences=val_occ_path, 
-        providers=providers, 
+        providers=val_providers, 
+        item_columns=item_columns_val,
         species=train_data.species, 
         n_low_occ=n_max_low_occ
     )
@@ -190,36 +149,80 @@ def setup_model(
 
     return train_data, val_data, model, optimizer, multimodal, autoencoder
 
-def train_model(
-    run_name, 
-    log_wandb, 
-    model_setup,
-    wandb_project=None,
-    wandb_id=None, 
-    train_occ_path=po_path, 
-    random_bg_path=None, 
-    val_occ_path=pa_path, 
-    n_max_low_occ=50,
-    embed_shape=None,
-    loss='weighted_loss', 
-    lambda2=1,
-    n_epochs=150, 
-    batch_size=128, 
-    learning_rate=1e-3, 
-    weight_decay=0,
-    num_workers_train=8,
-    num_workers_val=4,
-    seed=42
-):
+if __name__ == "__main__": 
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-r", "--run_name", required=True, help="Run name")
+    parser.add_argument("-p", "--path_to_config", help="Path to run config file")
+
+    args = parser.parse_args()
+    run_name = args.run_name
+    path_to_config = args.path_to_config
+
+    # read config file
+    if path_to_config is None:
+        path_to_config = f"{modeldir}{run_name}/config.json"
+    assert os.path.exists(path_to_config)
+    with open(path_to_config, "r") as f:
+        config = json.load(f)
+    config = {k: v if v != "" else None for k,v in config.items()}
+
+    # get variables from config 
+    log_wandb = config['log_wandb']
+    wandb_project = config['wandb_project']
+    wandb_id = config['wandb_id']
+    env_model = config['env_model']
+    sat_model = config['sat_model']
+    dataset = config['dataset']
+    random_bg = config['random_bg']
+    # train_occ_path = eval(config['train_occ_path'])
+    # random_bg_path = eval(config['random_bg_path']) if config['random_bg_path'] is not None else None
+    # val_occ_path = eval(config['val_occ_path'])
+    n_max_low_occ = config['n_max_low_occ']
+    embed_shape = config['embed_shape']
+    loss = config['loss']
+    lambda2 = config['lambda2']
+    n_epochs = config['n_epochs']
+    batch_size = config['batch_size']
+    learning_rate = config['learning_rate']
+    weight_decay = config['weight_decay']
+    num_workers_train = config['num_workers_train']
+    num_workers_val = config['num_workers_val']
+    seed = config['seed']
+
+    # # get paths to data for given dataset
+    # train_occ_path = get_path_to("po", config['dataset'], datadir)
+    # if config['random_bg']:
+    #     random_bg_path = get_path_to("random_bg", config['dataset'], datadir)
+    # else:
+    #     random_bg_path = None
+    # val_occ_path = get_path_to("pa", config['dataset'], datadir)
+    
+    # # make model setup dictionary
+    # model_setup = {}
+    # if config['env_model'] is not None: 
+    #     config['env_model']['covariates'] = [get_path_to(cov, config['dataset'], datadir) for cov in config['env_model']['covariates']]
+    #     model_setup['env'] = config['env_model']
+    # if config['sat_model'] is not None: 
+    #     config['sat_model']['covariates'] = [get_path_to(cov, config['dataset'], datadir) for cov in config['sat_model']['covariates']]
+    #     model_setup['sat'] = config['sat_model']
+
+    # set seed
     seed_everything(seed)
+
+    # get device (gpu (cuda) or cpu)
     dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"DEVICE: {dev}")
 
+    # setup data and model
     train_data, val_data, model, optimizer, multimodal, autoencoder = setup_model(
-        model_setup=model_setup, 
-        train_occ_path=train_occ_path, 
-        random_bg_path=random_bg_path, 
-        val_occ_path=val_occ_path, 
+        # model_setup=model_setup, 
+        env_model=env_model,
+        sat_model=sat_model,
+        dataset=dataset,
+        random_bg=random_bg,
+        # train_occ_path=train_occ_path, 
+        # random_bg_path=random_bg_path, 
+        # val_occ_path=val_occ_path, 
         n_max_low_occ=n_max_low_occ,
         embed_shape=embed_shape, 
         learning_rate=learning_rate, 
@@ -438,51 +441,6 @@ def train_model(
                 'val_auc': auc
             }, f"{modeldir}{run_name}/best_val_auc.pth")  
 
-if __name__ == "__main__": 
-    parser = argparse.ArgumentParser()
-    parser.add_argument("-r", "--run_name", required=True, help="Run name")
-    parser.add_argument("-p", "--path_to_config", help="Path to run config file")
-
-    args = parser.parse_args()
-    run_name = args.run_name
-    path_to_config = args.path_to_config
-    if path_to_config is None:
-        path_to_config = f"{modeldir}{run_name}/config.json"
-    assert os.path.exists(path_to_config)
-
-    with open(path_to_config, "r") as f:
-        config = json.load(f)
-
-    config = {k: v if v != "" else None for k,v in config.items()}
-
-    model_setup = {}
-    if config['env_model'] is not None: 
-        config['env_model']['covariates'] = [eval(f) for f in config['env_model']['covariates']]
-        model_setup['env'] = config['env_model']
-    if config['sat_model'] is not None: 
-        config['sat_model']['covariates'] = [eval(f) for f in config['sat_model']['covariates']]
-        model_setup['sat'] = config['sat_model']
-
-    train_model(
-        run_name, 
-        log_wandb = config['log_wandb'], 
-        model_setup = model_setup,
-        wandb_project = config['wandb_project'],
-        wandb_id = config['wandb_id'], 
-        train_occ_path = eval(config['train_occ_path']), 
-        random_bg_path = eval(config['random_bg_path']) if config['random_bg_path'] is not None else None, 
-        val_occ_path = eval(config['val_occ_path']), 
-        n_max_low_occ = config['n_max_low_occ'],
-        embed_shape = config['embed_shape'],
-        loss = config['loss'], 
-        lambda2 = config['lambda2'],
-        n_epochs = config['n_epochs'], 
-        batch_size = config['batch_size'], 
-        learning_rate = config['learning_rate'], 
-        weight_decay = config['weight_decay'],
-        num_workers_train = config['num_workers_train'],
-        num_workers_val = config['num_workers_val'],
-        seed = config['seed'])
     
 
 # run_name = '0510_multimodel_multires'

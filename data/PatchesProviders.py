@@ -180,23 +180,28 @@ class MultipleRasterPatchProvider(PatchProvider):
         return result
     
 class JpegPatchProvider(PatchProvider):
-    def __init__(self, root_path, select=['rgb','nir'], size=128, normalize=True):
+    def __init__(self, root_path, select=['rgb','nir'], size=128, normalize=True, id_col='patchID'):
         super().__init__(size, normalize)
         self.root_path = root_path
         self.ext = '.jpeg'
+        self.id_col = id_col
         
         sub_dirs = next(os.walk(root_path))[1] 
         select = [x for x in select if x in sub_dirs]
-        if 'rgb' in select:
-            self.channels = ['red','green','blue'] + [x for x in select if x != 'rgb']
-        else:
-            self.channels = select
-        self.channel_folder = {'red': 'rgb', 'green': 'rgb', 'blue': 'rgb','nir':'nir'}
+        self.channels = []
+        rgb_folder = [x for x in select if 'rgb' in x][0] if len([x for x in select if 'rgb' in x]) > 0 else None
+        nir_folder = [x for x in select if 'nir' in x][0] if len([x for x in select if 'nir' in x]) > 0 else None
+        if rgb_folder is not None:
+            self.channels += ['red','green','blue']
+        if nir_folder is not None:
+            self.channels += ['nir']
+        self.channels += [x for x in select if not (x == rgb_folder or x == nir_folder)]
+        self.channel_folder = {'red': rgb_folder, 'green': rgb_folder, 'blue': rgb_folder, 'nir': nir_folder}
         # 'swir1':'swir1','swir2':'swir2'
 
         if self.normalize:
             self.stats = {k: {
-                'mean': pd.read_csv(root_path+k+'_means.csv')['mean'].values,
+                'mean': pd.read_csv(root_path+k+'_mean.csv')['mean'].values,
                 'std':pd.read_csv(root_path+k+'_std.csv')['std_dev'].values
             } for k in select}
 
@@ -205,7 +210,7 @@ class JpegPatchProvider(PatchProvider):
         self.size = size
 
     def __getitem__(self, item):
-        patch_id = str(int(item['patchID']))
+        patch_id = str(int(item[self.id_col]))
 
         # folders that contain patches
         sub_folder_1 = patch_id[-2:]
@@ -217,7 +222,7 @@ class JpegPatchProvider(PatchProvider):
             img = np.asarray(Image.open(path))
             if self.normalize:
                 img = (img - self.stats[folder]['mean']) / self.stats[folder]['std']
-            if folder == 'rgb':
+            if 'rgb' in folder:
                 img = img.transpose((2,0,1))
             else:
                 img = np.expand_dims(img, axis=0)
