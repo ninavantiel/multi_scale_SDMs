@@ -26,7 +26,8 @@ def setup_model(
     embed_shape,
     learning_rate,
     weight_decay,
-    seed
+    seed,
+    test=False
 ):
     seed_everything(seed)
     
@@ -117,10 +118,22 @@ def setup_model(
         occurrences=val_occ_path, 
         providers=val_providers, 
         item_columns=item_columns_val,
-        species=train_data.species, 
+        species=train_data.species_pred, 
         n_low_occ=n_max_low_occ,
         sep=sep
     )
+
+    if test:
+        print("\nMaking dataset for test set")
+        test_occ_path = get_path_to("test", dataset, datadir)
+        test_data = PatchesDatasetCooccurrences(
+            occurrences=test_occ_path, 
+            providers=val_providers, 
+            item_columns=item_columns_val,
+            species=train_data.species_pred, 
+            label_name="Id",
+            n_low_occ=n_max_low_occ,
+            sep=sep)
     
     # model and optimizer
     print("\nMaking model")
@@ -133,8 +146,11 @@ def setup_model(
         model = model_list[0]
     optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
     # scheduler = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=1, end_factor=0.5, total_iters=50)# lr_lambda=lr_lambda)
-
-    return train_data, val_data, model, optimizer, multimodal, autoencoder
+    
+    if test:
+        return train_data, val_data, test_data, model, optimizer, multimodal, autoencoder
+    else:
+        return train_data, val_data, model, optimizer, multimodal, autoencoder
 
 if __name__ == "__main__": 
     parser = argparse.ArgumentParser()
@@ -243,11 +259,13 @@ if __name__ == "__main__":
         run = wandb.init(
             project=wandb_project, name=run_name, resume="allow", id=wandb_id,
             config={
-                'train_data': train_occ_path, 'pseudoabsences': random_bg_path,
-                'val_data': val_occ_path, 'n_species': train_data.n_species, 
-                'n_max_low_occ': n_max_low_occ, 
+                'dataset': dataset, 'pseudoabsences': random_bg,
+                # 'train_data': train_occ_path, 'pseudoabsences': random_bg_path,
+                # 'val_data': val_occ_path, 
+                'n_species': train_data.n_species, 'n_max_low_occ': n_max_low_occ, 
                 'n_species_low_occ': len(train_data.low_occ_species_idx),
-                'model': model_setup, #'receptive_fields': receptive_fields,
+                'env_model': env_model, 'sat_model': sat_model,
+                # 'model': model_setup, #'receptive_fields': receptive_fields,
                 'embed_shape': embed_shape, 'epochs': n_epochs, 
                 'batch_size': batch_size, 'lr': learning_rate, 'weight_decay': weight_decay,
                 'optimizer':'SGD', 'loss': loss, 'lambda2': lambda2, 
@@ -287,7 +305,7 @@ if __name__ == "__main__":
                 y_pred = torch.sigmoid(model(inputsA, inputsB))
 
             else:
-                if random_bg_path is None:
+                if not random_bg:
                     inputs = po_inputs[0].to(torch.float32).to(dev)
                 else:
                     inputs = torch.cat((po_inputs[0], bg_inputs[0]), 0).to(torch.float32).to(dev)
@@ -299,7 +317,7 @@ if __name__ == "__main__":
                 # else:
                 y_pred = torch.sigmoid(model(inputs))
                     
-            if random_bg_path is None:
+            if not random_bg:
                 if loss == 'weighted_loss':
                     classif_loss = loss_fn(y_pred, labels, species_weights)
                 else:
@@ -376,24 +394,28 @@ if __name__ == "__main__":
         labels = np.concatenate(labels_list)
         y_pred = np.concatenate(y_pred_list)
 
+        if epoch == 0:
+            np.save(f"{modeldir}/{run_name}/val_y_true.npy", labels)
+        np.save(f"{modeldir}/{run_name}/last_val_y_pred.npy", y_pred)
+
+        species_in_val_data = [s in val_data.species_counts.index for s in val_data.species]
+        labels = labels[:, species_in_val_data]
+        y_pred = y_pred[:, species_in_val_data]
+        
         # validation AUC
         auc = roc_auc_score(labels, y_pred)
         auc_low_occ = roc_auc_score(labels[:, train_data.low_occ_species_idx], y_pred[:, train_data.low_occ_species_idx])
 
+        df = pd.DataFrame(train_data.species_counts, columns=['n_occ']).reset_index().rename(columns={'index':'species'})
+        df['auc'] = [roc_auc_score(labels[:,i], y_pred[:,i]) for i in range(labels.shape[1])]
+        df.to_csv(f"{modeldir}{run_name}/last_species_auc.csv", index=False)
+            
         # if autoencoder:
         #     avg_val_classif_loss = np.mean(val_classif_loss_list)
         #     avg_val_reconstr_loss = np.mean(val_reconstr_loss_list, axis=0)
         #     print(f"\tVALIDATION LOSS={avg_val_loss} (classification loss={avg_val_classif_loss}, reconstruction loss={avg_val_reconstr_loss}) \nVALIDATION AUC={auc}")
         # else:
         print(f"\tVALIDATION LOSS={avg_val_loss} \nVALIDATION AUC={auc}")
-
-        df = pd.DataFrame(train_data.species_counts, columns=['n_occ']).reset_index().rename(columns={'index':'species'})
-        df['auc'] = [roc_auc_score(labels[:,i], y_pred[:,i]) for i in range(labels.shape[1])]
-        df.to_csv(f"{modeldir}{run_name}/last_species_auc.csv", index=False)
-        
-        if epoch == 0:
-            np.save(f"{modeldir}/{run_name}/y_true.npy", labels)
-        np.save(f"{modeldir}/{run_name}/last_y_pred.npy", y_pred)
 
         if log_wandb:
             wandb.log({"train_loss": avg_train_loss, "val_loss": avg_val_loss, "val_auc": auc, "val_auc_low_occ": auc_low_occ})

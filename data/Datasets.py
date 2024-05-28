@@ -55,59 +55,74 @@ class PatchesDatasetCooccurrences(Dataset):
         item_columns=['lat','lon','patchID','dayOfYear'],
         pseudoabsences=None,
         n_low_occ=50,
-        sep=';'
+        sep=';',
+        test=False
     ):
         self.occurrences = Path(occurrences)
         self.label_name = label_name
         self.item_columns = item_columns
         self.pseudoabsences = pseudoabsences
         self.n_low_occ = n_low_occ
+        self.test = test
 
         df = pd.read_csv(self.occurrences, sep=sep, header='infer', low_memory=False)
-        if species is None: 
-            self.species = np.unique(df[label_name].values)
-        else: 
-            self.species = species
+        
+        if self.test:
+            df = df.reset_index()
+            label_name = 'index'
+
         self.items = pd.DataFrame(df.groupby(item_columns)[label_name].agg(list)).reset_index()
-
         self.n_items = self.items.shape[0]
-        self.n_species = len(self.species)
-        print(f"nb items = {self.n_items}\nnb species = {self.n_species}")
-
-        self.species_counts = pd.Series(
-            [sps for sps_list in self.items[label_name] for sps in sps_list]
-        ).value_counts().sort_index()
-        self.species_weights = (self.n_items / self.species_counts).values
-
-        self.low_occ_species = self.species_counts[self.species_counts <= self.n_low_occ].index
-        self.low_occ_species_idx = np.where(np.isin(self.species, self.low_occ_species))[0]
-        print(f"nb of species with less than {self.n_low_occ} occurrences = {len(self.low_occ_species_idx)}")
+        print(f"nb items = {self.n_items}")
 
         if self.pseudoabsences is not None:
             self.pseudoabsence_items = pd.read_csv(self.pseudoabsences).sample(self.n_items)
             print(f"nb pseudoabsences = {self.pseudoabsence_items.shape[0]}")
-
+        
         self.base_providers = providers
         self.providers = [MetaPatchProvider(p) for p in self.base_providers]
-        # MetaPatchProvider(self.base_providers)
+
+        if self.test:
+            self.submission_id = df.Id
+
+        else:
+            self.species_data = np.unique(df[label_name].values)
+            self.n_species_data = len(self.species_data)
+
+            if species is None: 
+                self.species_pred = self.species_data
+                self.species_counts = pd.Series([sps for sps_list in self.items[label_name] for sps in sps_list]).value_counts().sort_index()
+                self.species_weights = (self.n_items / self.species_counts).values
+                self.low_occ_species = self.species_counts[self.species_counts <= self.n_low_occ].index
+                self.low_occ_species_idx = np.where(np.isin(self.species_pred, self.low_occ_species))[0]
+            
+            else: 
+                self.species_pred = species
+            
+            self.n_species_pred = len(self.species_pred)
+            self.species_pred_in_data = [s in self.species_data for s in self.species_pred]
+            self.n_species_pred_in_data = len(self.species_pred_in_data)
 
     def __len__(self):
         return self.items.shape[0]
 
     def __getitem__(self, index):
         item = self.items.iloc[index][self.item_columns].to_dict()
-        item_species = self.items.iloc[index][self.label_name]
-        labels = 1 * np.isin(self.species, item_species)
         patches = [p[item] for p in self.providers]
-        #self.provider[item]
 
         if self.pseudoabsences is None:
-            pseudoabsence_patches = 0        
+            pseudoabsence_patches = 0
         else:
             pseudoabsence_item = self.pseudoabsence_items.iloc[index].to_dict()
             pseudoabsence_patches = [p[pseudoabsence_item] for p in self.providers]
             # pseudoabsence_patch = self.provider[pseudoabsence_item]
         
+        if self.test:
+            labels = 0
+        else:
+            item_species = self.items.iloc[index][self.label_name]
+            labels = 1 * np.isin(self.species_pred, item_species)
+
         return patches, pseudoabsence_patches, labels
 
 # class MultiScalePatchesDatasetCooccurrences(PatchesDatasetCooccurrences):

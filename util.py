@@ -20,11 +20,12 @@ def get_path_to(path_to, dataset, datadir):
     assert dataset in ['glc23', 'glc24']
 
     if dataset == 'glc23':
-        dataset_dir = datadir+'full_data/' 
+        dataset_dir = datadir+'GLC23/' 
         paths = {
             "po": 'Presence_only_occurrences/Presences_only_train_sampled_100_percent_min_1_occurrences.csv',
             "random_bg": 'Presence_only_occurrences/Pseudoabsence_locations_bioclim_soil.csv',
             "pa": 'Presence_Absence_surveys/Presences_Absences_train.csv',
+            "test": 'For_submission/test_blind.csv',
             "sat": 'SatelliteImages/',
             "bioclim": 'EnvironmentalRasters/Climate/BioClimatic_Average_1981-2010/',
             "soil": 'EnvironmentalRasters/Soilgrids/',
@@ -32,11 +33,12 @@ def get_path_to(path_to, dataset, datadir):
         }
     
     elif dataset == 'glc24':
-        dataset_dir = datadir+'glc24_data/'
+        dataset_dir = datadir+'GLC24/'
         paths = {
             "po": 'PresenceOnlyOccurrences/GLC24-PO-metadata-train.csv',
             #"random_bg": '',
             "pa": 'PresenceAbsenceSurveys/GLC24-PA-metadata-train.csv',
+            "test": 'PresenceAbsenceSurveys/GLC24-PA-metadata-test.csv',
             "sat": 'SatellitePatches/',
             "bioclim": 'EnvironmentalRasters/Climate/BioClimatic_Average_1981-2010/',
             "soil": 'EnvironmentalRasters/Soilgrids/',
