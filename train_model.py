@@ -109,7 +109,7 @@ def setup_model(
             assert embed_shape is not None
             model_setup[key]['output_shape'] = embed_shape
         else:
-            model_setup[key]['output_shape'] = train_data.n_species
+            model_setup[key]['output_shape'] = train_data.n_species_pred
     print(f"input shape: {[params['input_shape'] for params in model_setup.values()]}")
 
     # validation data
@@ -133,14 +133,15 @@ def setup_model(
             species=train_data.species_pred, 
             label_name="Id",
             n_low_occ=n_max_low_occ,
-            sep=sep)
+            sep=sep,
+            test=True)
     
     # model and optimizer
     print("\nMaking model")
     model_list = [make_model(model_dict) for model_dict in model_setup.values()]
     if multimodal:
         model = MultimodalModel(
-            model_list[0], model_list[1], train_data.n_species, embed_shape, embed_shape
+            model_list[0], model_list[1], train_data.n_species_pred, embed_shape, embed_shape
         )
     else:
         model = model_list[0]
@@ -262,8 +263,9 @@ if __name__ == "__main__":
                 'dataset': dataset, 'pseudoabsences': random_bg,
                 # 'train_data': train_occ_path, 'pseudoabsences': random_bg_path,
                 # 'val_data': val_occ_path, 
-                'n_species': train_data.n_species, 'n_max_low_occ': n_max_low_occ, 
-                'n_species_low_occ': len(train_data.low_occ_species_idx),
+                'n_species': train_data.n_species_pred, 
+                # 'n_max_low_occ': n_max_low_occ, 
+                # 'n_species_low_occ': len(train_data.low_occ_species_idx),
                 'env_model': env_model, 'sat_model': sat_model,
                 # 'model': model_setup, #'receptive_fields': receptive_fields,
                 'embed_shape': embed_shape, 'epochs': n_epochs, 
@@ -394,31 +396,31 @@ if __name__ == "__main__":
         labels = np.concatenate(labels_list)
         y_pred = np.concatenate(y_pred_list)
 
-        if epoch == 0:
-            np.save(f"{modeldir}/{run_name}/val_y_true.npy", labels)
-        np.save(f"{modeldir}/{run_name}/last_val_y_pred.npy", y_pred)
-
-        species_in_val_data = [s in val_data.species_counts.index for s in val_data.species]
-        labels = labels[:, species_in_val_data]
-        y_pred = y_pred[:, species_in_val_data]
-        
         # validation AUC
+        labels = labels[:, val_data.species_pred_in_data]
+        y_pred = y_pred[:, val_data.species_pred_in_data]
         auc = roc_auc_score(labels, y_pred)
-        auc_low_occ = roc_auc_score(labels[:, train_data.low_occ_species_idx], y_pred[:, train_data.low_occ_species_idx])
+        print(f"\tVALIDATION LOSS={avg_val_loss} \nVALIDATION AUC={auc}")
 
+        # validation AUC for species with low number of occurrences
+        # idx_in_val_low_occ = np.logical_and(train_data.species_pred_in_low_occ, val_data.species_pred_in_data)
+        # auc_low_occ = roc_auc_score(labels[:, idx_in_val_low_occ], y_pred[:, idx_in_val_low_occ])
+
+        # validation AUC per species
         df = pd.DataFrame(train_data.species_counts, columns=['n_occ']).reset_index().rename(columns={'index':'species'})
         df['auc'] = [roc_auc_score(labels[:,i], y_pred[:,i]) for i in range(labels.shape[1])]
         df.to_csv(f"{modeldir}{run_name}/last_species_auc.csv", index=False)
             
+        if epoch == 0:
+            np.save(f"{modeldir}/{run_name}/val_y_true.npy", labels)
         # if autoencoder:
         #     avg_val_classif_loss = np.mean(val_classif_loss_list)
         #     avg_val_reconstr_loss = np.mean(val_reconstr_loss_list, axis=0)
         #     print(f"\tVALIDATION LOSS={avg_val_loss} (classification loss={avg_val_classif_loss}, reconstruction loss={avg_val_reconstr_loss}) \nVALIDATION AUC={auc}")
         # else:
-        print(f"\tVALIDATION LOSS={avg_val_loss} \nVALIDATION AUC={auc}")
 
         if log_wandb:
-            wandb.log({"train_loss": avg_train_loss, "val_loss": avg_val_loss, "val_auc": auc, "val_auc_low_occ": auc_low_occ})
+            wandb.log({"train_loss": avg_train_loss, "val_loss": avg_val_loss, "val_auc": auc}) #, "val_auc_low_occ": auc_low_occ})
             # if autoencoder:
             #     wandb.log({"train_total_loss": avg_train_loss, "val_total_loss": avg_val_loss})
             #     if len(avg_train_reconstr_loss) == 1:
@@ -443,6 +445,7 @@ if __name__ == "__main__":
 
         # save best model
         if auc > max_val_auc:
+            print("Best iteration yet! Saving model...")
             max_val_auc = auc
             df.to_csv(f"{modeldir}{run_name}/best_val_auc_species_auc.csv", index=False)
             np.save(f"{modeldir}/{run_name}/best_val_auc_y_pred.npy", y_pred)
@@ -462,19 +465,14 @@ if __name__ == "__main__":
 # with open(path_to_config, "r") as f: 
 #     config = json.load(f)
 # config = {k: v if v != "" else None for k,v in config.items()}
-# model_setup = {}
 
-# if config['env_model'] is not None: 
-#     config['env_model']['covariates'] = [eval(f) for f in config['env_model']['covariates']]
-#     model_setup['env'] = config['env_model']
-
-# if config['sat_model'] is not None: 
-#     config['sat_model']['covariates'] = [eval(f) for f in config['sat_model']['covariates']]
-#     model_setup['sat'] = config['sat_model']
-
-# train_occ_path = eval(config['train_occ_path'])
-# random_bg_path = eval(config['random_bg_path']) if config['random_bg_path'] is not None else None
-# val_occ_path = eval(config['val_occ_path'])
+# log_wandb = config['log_wandb']
+# wandb_project = config['wandb_project']
+# wandb_id = config['wandb_id']
+# env_model = config['env_model']
+# sat_model = config['sat_model']
+# dataset = config['dataset']
+# random_bg = config['random_bg']
 # n_max_low_occ = config['n_max_low_occ']
 # embed_shape = config['embed_shape']
 # loss = config['loss']

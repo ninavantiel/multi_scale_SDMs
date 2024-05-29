@@ -115,9 +115,10 @@ if __name__ == "__main__":
             y_pred = torch.sigmoid(model(inputs))
         y_pred_list.append(y_pred.cpu().detach().numpy())
 
-    targets = train_data.species
     y_pred = np.concatenate(y_pred_list)
-    y_bin = np.where(y_pred > best_threshold, 1, 0)
+    # y_bin = np.where(y_pred > best_threshold, 1, 0)
+    targets = train_data.species_pred
     pred_species = [' '.join([str(x) for x in targets[np.where(y_pred[i, :] > best_threshold)]]) for i in range(y_pred.shape[0])]
     sub_df = pd.DataFrame({'Id': test_data.submission_id, 'Predicted': pred_species})
     sub_df.to_csv(f"{modeldir}{run_name}/submission_epoch_{epoch}_thresh_{str(best_threshold)}.csv", index=False)
+

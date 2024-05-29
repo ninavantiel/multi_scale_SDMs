@@ -93,15 +93,15 @@ class PatchesDatasetCooccurrences(Dataset):
                 self.species_pred = self.species_data
                 self.species_counts = pd.Series([sps for sps_list in self.items[label_name] for sps in sps_list]).value_counts().sort_index()
                 self.species_weights = (self.n_items / self.species_counts).values
-                self.low_occ_species = self.species_counts[self.species_counts <= self.n_low_occ].index
-                self.low_occ_species_idx = np.where(np.isin(self.species_pred, self.low_occ_species))[0]
+                # self.low_occ_species = self.species_counts[self.species_counts <= self.n_low_occ].index
+                # self.species_pred_in_low_occ = [s in self.low_occ_species for s in self.species_pred]
             
             else: 
                 self.species_pred = species
+                self.species_pred_in_data = [s in self.species_data for s in self.species_pred]
+                self.n_species_pred_in_data = len(self.species_pred_in_data)
             
             self.n_species_pred = len(self.species_pred)
-            self.species_pred_in_data = [s in self.species_data for s in self.species_pred]
-            self.n_species_pred_in_data = len(self.species_pred_in_data)
 
     def __len__(self):
         return self.items.shape[0]
