@@ -52,7 +52,7 @@ class PatchesDatasetCooccurrences(Dataset):
         providers,
         species=None,
         label_name='speciesId',
-        item_columns=['lat','lon','patchID','dayOfYear'],
+        item_columns=['lat','lon','patchID'], #,'dayOfYear'],
         pseudoabsences=None,
         n_low_occ=50,
         sep=';',
@@ -93,13 +93,11 @@ class PatchesDatasetCooccurrences(Dataset):
                 self.species_pred = self.species_data
                 self.species_counts = pd.Series([sps for sps_list in self.items[label_name] for sps in sps_list]).value_counts().sort_index()
                 self.species_weights = (self.n_items / self.species_counts).values
-                # self.low_occ_species = self.species_counts[self.species_counts <= self.n_low_occ].index
-                # self.species_pred_in_low_occ = [s in self.low_occ_species for s in self.species_pred]
-            
+
             else: 
                 self.species_pred = species
                 self.species_pred_in_data = [s in self.species_data for s in self.species_pred]
-                self.n_species_pred_in_data = len(self.species_pred_in_data)
+                self.n_species_pred_in_data = np.sum(self.species_pred_in_data)
             
             self.n_species_pred = len(self.species_pred)
 
@@ -115,7 +113,6 @@ class PatchesDatasetCooccurrences(Dataset):
         else:
             pseudoabsence_item = self.pseudoabsence_items.iloc[index].to_dict()
             pseudoabsence_patches = [p[pseudoabsence_item] for p in self.providers]
-            # pseudoabsence_patch = self.provider[pseudoabsence_item]
         
         if self.test:
             labels = 0
@@ -124,38 +121,3 @@ class PatchesDatasetCooccurrences(Dataset):
             labels = 1 * np.isin(self.species_pred, item_species)
 
         return patches, pseudoabsence_patches, labels
-
-# class MultiScalePatchesDatasetCooccurrences(PatchesDatasetCooccurrences):
-#     def __init__(
-#         self,
-#         occurrences,
-#         providersA,
-#         providersB,
-#         species=None,
-#         label_name='speciesId',
-#         item_columns=['lat','lon','patchID','dayOfYear'],
-#         pseudoabsences=None,
-#         n_low_occ=50
-#     ):
-#         super().__init__(occurrences, providersA, species, label_name, item_columns, pseudoabsences, n_low_occ)
-        
-#         self.base_providersA = providersA
-#         self.providersA = MetaPatchProvider(self.base_providersA)
-#         self.base_providersB = providersB
-#         self.providersB = MetaPatchProvider(self.base_providersB)
-
-#     def __getitem__(self, index):
-#         item = self.items.iloc[index][self.item_columns].to_dict()
-#         item_species = self.items.iloc[index][self.label_name]
-#         labels = 1 * np.isin(self.species, item_species)
-
-#         patchA = self.providersA[item]
-#         patchB = self.providersB[item]
-        
-#         if self.pseudoabsences is None:
-#             pseudoabsence_patch_list = 0
-#         else:
-#             pseudoabsence_item = self.pseudoabsence_items.iloc[index].to_dict()
-#             pseudoabsence_patch_list = [provider[pseudoabsence_item] for provider in self.providers]
-        
-#         return patchA, patchB, labels, pseudoabsence_patch_list

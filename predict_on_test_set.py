@@ -4,11 +4,14 @@ from sklearn.metrics import f1_score
 if __name__ == "__main__": 
     parser = argparse.ArgumentParser()
     parser.add_argument("-r", "--run_name", required=True, help="Run name")
+    parser.add_argument("-m", "--model", choices=['best', 'last'], default='best', help="Use model at best val AUC epoch or last epoch. Options: best, last")
     parser.add_argument("-p", "--path_to_config", help="Path to run config file")
 
     args = parser.parse_args()
     run_name = args.run_name
     path_to_config = args.path_to_config
+    model = args.model
+    model_to_load = 'best_val_auc' if model == 'best' else model
 
     # read config file
     if path_to_config is None:
@@ -26,7 +29,6 @@ if __name__ == "__main__":
     sat_model = config['sat_model']
     dataset = config['dataset']
     random_bg = config['random_bg']
-    n_max_low_occ = config['n_max_low_occ']
     embed_shape = config['embed_shape']
     loss = config['loss']
     lambda2 = config['lambda2']
@@ -47,7 +49,6 @@ if __name__ == "__main__":
         sat_model=sat_model,
         dataset=dataset,
         random_bg=random_bg,
-        n_max_low_occ=n_max_low_occ,
         embed_shape=embed_shape, 
         learning_rate=learning_rate, 
         weight_decay=weight_decay,
@@ -55,18 +56,18 @@ if __name__ == "__main__":
         test=True) 
     model = model.to(dev)
 
-    checkpoint = torch.load(f"{modeldir}{run_name}/best_val_auc.pth")
+    checkpoint = torch.load(f"{modeldir}{run_name}/{model_to_load}.pth")    
     model.load_state_dict(checkpoint['state_dict'])
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
     epoch = checkpoint['epoch'] + 1
     max_val_auc = checkpoint['val_auc']
     print(epoch, max_val_auc)
 
-    if os.path.exists(f"models/{run_name}/y_pred_best_val_auc.npy") and os.path.exists(f"models/{run_name}/y_true.npy"):
+    if os.path.exists(f"models/{run_name}/y_pred_{model_to_load}.npy") and os.path.exists(f"models/{run_name}/y_true.npy"):
         print("Loading y_pred and y_true...")
-        y_pred =  np.load(f"models/{run_name}/y_pred_best_val_auc.npy")
+        y_pred =  np.load(f"models/{run_name}/y_pred_{model_to_load}.npy")
         y_true = np.load(f"models/{run_name}/y_true.npy")
-
+    
     else:
         val_loader = torch.utils.data.DataLoader(val_data, shuffle=False, batch_size=batch_size, num_workers=num_workers_val)
         # evaluate model on validation set

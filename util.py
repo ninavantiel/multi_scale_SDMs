@@ -22,6 +22,7 @@ def get_path_to(path_to, dataset, datadir):
     if dataset == 'glc23':
         dataset_dir = datadir+'GLC23/' 
         paths = {
+            # "po": 'Presence_only_occurrences/Presences_only_train.csv', 
             "po": 'Presence_only_occurrences/Presences_only_train_sampled_100_percent_min_1_occurrences.csv',
             "random_bg": 'Presence_only_occurrences/Pseudoabsence_locations_bioclim_soil.csv',
             "pa": 'Presence_Absence_surveys/Presences_Absences_train.csv',
@@ -37,7 +38,8 @@ def get_path_to(path_to, dataset, datadir):
         paths = {
             "po": 'PresenceOnlyOccurrences/GLC24-PO-metadata-train.csv',
             #"random_bg": '',
-            "pa": 'PresenceAbsenceSurveys/GLC24-PA-metadata-train.csv',
+            "pa": 'PresenceAbsenceSurveys/GLC24-PA-metadata-train.csv', #-France.csv',
+            # "pa_sample": 'PresenceAbsenceSurveys/GLC24-PA-metadata-train-sample-20percent.csv',
             "test": 'PresenceAbsenceSurveys/GLC24-PA-metadata-test.csv',
             "sat": 'SatellitePatches/',
             "bioclim": 'EnvironmentalRasters/Climate/BioClimatic_Average_1981-2010/',
