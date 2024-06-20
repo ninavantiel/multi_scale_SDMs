@@ -51,13 +51,13 @@ def setup_model(
 
     if dataset == 'glc23':
         sep = ';'
-        item_columns=['lat','lon','patchID']
+        item_columns=['lat','lon','patchID','dayOfYear']
         item_columns_val=item_columns
         sat_id_col = 'patchID'
         select_sat_train=['rgb','nir']
     elif dataset == 'glc24':
         sep = ','
-        item_columns=['lat','lon','surveyId']
+        item_columns=['lat','lon','surveyId','dayOfYear']
         item_columns_val=['lat','lon','surveyId']
         sat_id_col = 'surveyId'
         select_sat_train=['po_train_patches_rgb','po_train_patches_nir']
@@ -360,7 +360,7 @@ if __name__ == "__main__":
                 'val_auc': auc
             }, f"{modeldir}{run_name}/best_val_auc.pth")  
 
-# run_name = '0510_multimodel_multires'
+# run_name = '0612_env_3'
 # path_to_config = f"{modeldir}{run_name}/config.json"
 # with open(path_to_config, "r") as f: 
 #     config = json.load(f)

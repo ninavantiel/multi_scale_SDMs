@@ -118,7 +118,7 @@ def make_model(model_dict):
             backbone_param_names = {'pretrained'}
         assert backbone_param_names.issubset(set(model_dict['backbone_params'].keys()))
 
-        aspp_param_names = {'out_channels', 'out_size', 'kernel_sizes', 'dilations', 'pooling_sizes', 'n_linear_layers'}
+        aspp_param_names = {'out_channels', 'out_size', 'kernel_sizes', 'strides', 'pooling_sizes', 'n_linear_layers'}
         assert aspp_param_names.issubset(set(model_dict['aspp_params'].keys()))
 
         if model_dict['model_name'] == 'MultiResolutionModel':

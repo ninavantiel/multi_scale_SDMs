@@ -119,19 +119,19 @@ class MultimodalModel(nn.Module):
         return x
 
 class ASPP_branch(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_sizes, dilations, pooling_sizes, n_linear_layers, target_size):
+    def __init__(self, in_channels, out_channels, kernel_sizes, strides, pooling_sizes, n_linear_layers, target_size):
         super(ASPP_branch, self).__init__()
 
         conv_layers = []
         receptive_field = 1
-        for i, (k, d, p) in enumerate(zip(kernel_sizes, dilations, pooling_sizes)):
+        for i, (k, s, p) in enumerate(zip(kernel_sizes, strides, pooling_sizes)):
             if i == 0: 
-                conv_layers.append(nn.Conv2d(in_channels, out_channels, k, dilation=d)) #padding = (k-1)//2)
+                conv_layers.append(nn.Conv2d(in_channels, out_channels, k, stride=s)) #padding = (k-1)//2)
             else:
-                conv_layers.append(nn.Conv2d(out_channels, out_channels, k, dilation=d)) #padding = (k-1)//2)
+                conv_layers.append(nn.Conv2d(out_channels, out_channels, k, stride=s)) #padding = (k-1)//2)
             conv_layers.append(nn.ReLU())
             conv_layers.append(nn.MaxPool2d(kernel_size=p, stride=p))
-            receptive_field = (receptive_field + (k-1)*d) * p
+            receptive_field = ((receptive_field*s)+k-s) * p
         self.conv_layers = nn.Sequential(*conv_layers)
         self.receptive_field = receptive_field
 
@@ -250,7 +250,7 @@ class MultiResolutionModel(nn.Module):
         self.aspp_branches = nn.ModuleList([ASPP_branch(
             self.backbone.out_channels, aspp_params['out_channels'], 
             k, d, p, aspp_params['n_linear_layers'], aspp_params['out_size']
-        ) for k, d, p in zip(aspp_params['kernel_sizes'], aspp_params['dilations'], aspp_params['pooling_sizes'])])
+        ) for k, d, p in zip(aspp_params['kernel_sizes'], aspp_params['strides'], aspp_params['pooling_sizes'])])
 
         self.linear = nn.Linear(aspp_params['out_size']*len(aspp_params['kernel_sizes']), target_size)
         # self.linear = nn.Linear(len(aspp_params['kernel_sizes']), 1)

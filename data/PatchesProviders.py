@@ -130,7 +130,7 @@ class RasterPatchProvider(PatchProvider):
             if self.patch_size == 1:
                 patch_data = [self.data[i, x:x+1, y:y+1] for i in range(self.nb_layers)]
             else:
-                patch_data = [self.data[i, x - (self.patch_size // 2): x + (self.patch_size // 2), y - (self.patch_size // 2): y + (self.patch_size // 2)] for i in range(self.nb_layers)]
+                patch_data = [self.data[i, x-(self.patch_size // 2): x+1+(self.patch_size // 2), y-(self.patch_size // 2): y+1+(self.patch_size // 2)] for i in range(self.nb_layers)]
         except:
             print(x, y, item, self.data.shape)
             exit()

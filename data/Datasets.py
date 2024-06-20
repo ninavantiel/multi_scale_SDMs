@@ -52,7 +52,7 @@ class PatchesDatasetCooccurrences(Dataset):
         providers,
         species=None,
         label_name='speciesId',
-        item_columns=['lat','lon','patchID'], #,'dayOfYear'],
+        item_columns=['lat','lon','patchID', 'dayOfYear'],
         pseudoabsences=None,
         n_low_occ=50,
         sep=';',
