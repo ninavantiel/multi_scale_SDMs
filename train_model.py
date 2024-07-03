@@ -104,8 +104,9 @@ def setup_model(
     for i, key in enumerate(model_setup.keys()):
         model_setup[key]['input_shape'] = train_data[0][0][i].shape
         if multimodal:
-            assert embed_shape is not None
-            model_setup[key]['output_shape'] = embed_shape
+            # assert embed_shape is not None
+            # model_setup[key]['output_shape'] = embed_shape
+            model_setup[key]['output_shape'] = None
         else:
             model_setup[key]['output_shape'] = train_data.n_species_pred
     print(f"input shape: {[params['input_shape'] for params in model_setup.values()]}")
@@ -136,9 +137,7 @@ def setup_model(
     print("\nMaking model")
     model_list = [make_model(model_dict) for model_dict in model_setup.values()]
     if multimodal:
-        model = MultimodalModel(
-            model_list[0], model_list[1], train_data.n_species_pred, embed_shape, embed_shape
-        )
+        model = MultimodalModel(model_list[0], model_list[1], train_data.n_species_pred)
     else:
         model = model_list[0]
     optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
@@ -362,10 +361,8 @@ if __name__ == "__main__":
 
 # run_name = '0612_env_3'
 # path_to_config = f"{modeldir}{run_name}/config.json"
-# with open(path_to_config, "r") as f: 
-#     config = json.load(f)
+# with open(path_to_config, "r") as f: config = json.load(f)
 # config = {k: v if v != "" else None for k,v in config.items()}
-
 # log_wandb = config['log_wandb']
 # wandb_project = config['wandb_project']
 # wandb_id = config['wandb_id']

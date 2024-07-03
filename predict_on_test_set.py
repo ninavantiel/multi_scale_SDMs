@@ -6,12 +6,14 @@ if __name__ == "__main__":
     parser.add_argument("-r", "--run_name", required=True, help="Run name")
     parser.add_argument("-m", "--model", choices=['best', 'last', 'both'], default='both', help="Use model at best val AUC epoch or last epoch. Options: best, last")
     parser.add_argument("-p", "--path_to_config", help="Path to run config file")
+    parser.add_argument("-t", "--threshold", default='best', help="Find best threshold on val data or use provided numerical value")
 
     args = parser.parse_args()
     run_name = args.run_name
     path_to_config = args.path_to_config
     model = args.model
     model_list = ['best_val_auc'] if model == 'best' else (['last'] if model == 'last' else ['best_val_auc','last']) 
+    threshold = args.threshold
 
     # read config file
     if path_to_config is None:
@@ -68,7 +70,7 @@ if __name__ == "__main__":
         if os.path.exists(f"models/{run_name}/y_pred_{model_to_load}.npy") and os.path.exists(f"models/{run_name}/y_true.npy"):
             print("Loading y_pred and y_true...")
             y_pred =  np.load(f"models/{run_name}/y_pred_{model_to_load}.npy")
-            y_true = np.load(f"models/{run_name}/y_true.npy")
+            labels = np.load(f"models/{run_name}/y_true.npy")
         
         else:
             val_loader = torch.utils.data.DataLoader(val_data, shuffle=False, batch_size=batch_size, num_workers=num_workers_val)
@@ -95,17 +97,24 @@ if __name__ == "__main__":
             np.save(f"{modeldir}{run_name}/y_pred_{model_to_load}.npy", y_pred)
             np.save(f"{modeldir}{run_name}/y_true.npy", labels)
 
-        f1_scores = []
-        thresholds = np.arange(0.05, 1, 0.05)
-        for thresh in tqdm(thresholds):
-            y_bin = np.where(y_pred > thresh, 1, 0)
-            f1_scores.append(f1_score(labels.T, y_bin.T, average='macro', zero_division=0))
+        if threshold == 'best':
+            f1_scores = []
+            thresholds = np.arange(0.2, 0.8, 0.025)
+            for thresh in tqdm(thresholds):
+                y_bin = np.where(y_pred > thresh, 1, 0)
+                f1_scores.append(f1_score(labels.T, y_bin.T, average='macro', zero_division=0))
 
-        best_threshold = thresholds[np.argmax(f1_scores)]
-        best_f1 = np.max(f1_scores)      
-        print(f"Thresholds: {thresholds}\nF1-scores: {f1_scores}")
-        print(f"Best threshold={best_threshold} --> validation F1-score={best_f1}")
-        np.save(f"{modeldir}{run_name}/f1_scores_{model_to_load}.npy", np.stack([thresholds, f1_scores]))
+            val_threshold = thresholds[np.argmax(f1_scores)]
+            val_f1 = np.max(f1_scores)      
+            print(f"Best threshold={val_threshold} --> validation F1-score={val_f1}")
+            np.save(f"{modeldir}{run_name}/f1_scores_{model_to_load}.npy", np.stack([thresholds, f1_scores]))
+
+        else:
+            val_threshold = float(threshold)
+            assert val_threshold >= 0 and val_threshold <= 1
+            y_bin = np.where(y_pred > val_threshold, 1, 0)
+            val_f1 = f1_score(labels.T, y_bin.T, average='macro', zero_division=0)
+            print(f"Threshold={val_threshold} --> validation F1-score={val_f1}")
 
         test_loader = torch.utils.data.DataLoader(test_data, shuffle=False, batch_size=batch_size)
         y_pred_list = []
@@ -122,7 +131,7 @@ if __name__ == "__main__":
         y_pred = np.concatenate(y_pred_list)
         # y_bin = np.where(y_pred > best_threshold, 1, 0)
         targets = train_data.species_pred
-        pred_species = [' '.join([str(x) for x in targets[np.where(y_pred[i, :] > best_threshold)]]) for i in range(y_pred.shape[0])]
+        pred_species = [' '.join([str(x) for x in targets[np.where(y_pred[i, :] > val_threshold)]]) for i in range(y_pred.shape[0])]
         sub_df = pd.DataFrame({'Id': test_data.submission_id, 'Predicted': pred_species})
-        sub_df.to_csv(f"{modeldir}{run_name}/submission_epoch_{epoch}_thresh_{str(best_threshold)}.csv", index=False)
+        sub_df.to_csv(f"{modeldir}{run_name}/submission_epoch_{epoch}_thresh_{str(val_threshold)}.csv", index=False)
 

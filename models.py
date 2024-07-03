@@ -105,11 +105,11 @@ def get_resnet(target_size, n_input_channels=4, pretrained=True, init_extra_chan
     return model
 
 class MultimodalModel(nn.Module):
-    def __init__(self, modelA, modelB, target_size, outsizeA, outsizeB):
+    def __init__(self, modelA, modelB, target_size):
         super(MultimodalModel, self).__init__()
         self.modelA = modelA
         self.modelB = modelB
-        self.fc = nn.Linear(outsizeA + outsizeB, target_size)
+        self.fc = nn.Linear(modelA.out_size + modelB.out_size, target_size)
         
     def forward(self, x1, x2):
         x1 = self.modelA(x1)
@@ -237,8 +237,13 @@ class ResNet_3layers(nn.Module):
     
 class MultiResolutionModel(nn.Module):
     def __init__(self, in_channels, in_patch_size, target_size, backbone, backbone_params, aspp_params):
-        super(MultiResolutionModel, self).__init__()        
-        self.target_size = target_size
+        super(MultiResolutionModel, self).__init__()
+        if target_size is None:
+            self.linear_layer = False
+            self.out_size = aspp_params['out_size']*len(aspp_params['kernel_sizes'])
+        else:
+            self.linear_layer = True
+            self.out_size = target_size
 
         if backbone == 'CNN':
             self.backbone = CNN(
@@ -251,16 +256,17 @@ class MultiResolutionModel(nn.Module):
             self.backbone.out_channels, aspp_params['out_channels'], 
             k, d, p, aspp_params['n_linear_layers'], aspp_params['out_size']
         ) for k, d, p in zip(aspp_params['kernel_sizes'], aspp_params['strides'], aspp_params['pooling_sizes'])])
-
-        self.linear = nn.Linear(aspp_params['out_size']*len(aspp_params['kernel_sizes']), target_size)
-        # self.linear = nn.Linear(len(aspp_params['kernel_sizes']), 1)
+    
+        if self.linear_layer:
+            self.linear = nn.Linear(aspp_params['out_size']*len(aspp_params['kernel_sizes']), target_size)
         
     def forward(self, x):
         x = self.backbone(x)
         xlist = [aspp(x) for aspp in self.aspp_branches]
         x = torch.cat(xlist, dim=1)
         # x = torch.stack(xlist, dim=2)
-        x = torch.squeeze(self.linear(x))
+        if self.linear_layer:
+            x = torch.squeeze(self.linear(x))
         return x
     
 class MultiResolutionAutoencoder(MultiResolutionModel):
