@@ -1,5 +1,5 @@
 from train_model import *
-from sklearn.metrics import f1_score
+from sklearn.metrics import f1_score, roc_auc_score
 
 if __name__ == "__main__": 
     parser = argparse.ArgumentParser()
@@ -63,13 +63,13 @@ if __name__ == "__main__":
         checkpoint = torch.load(f"{modeldir}{run_name}/{model_to_load}.pth")
         model.load_state_dict(checkpoint['state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-        epoch = checkpoint['epoch'] + 1
+        epoch = checkpoint['epoch'] +1
         val_auc = checkpoint['val_auc']
         print(epoch, val_auc)
 
-        if os.path.exists(f"models/{run_name}/y_pred_{model_to_load}.npy") and os.path.exists(f"models/{run_name}/y_true.npy"):
+        if os.path.exists(f"models/{run_name}/y_pred_epoch_{str(epoch)}.npy") and os.path.exists(f"models/{run_name}/y_true.npy"):
             print("Loading y_pred and y_true...")
-            y_pred =  np.load(f"models/{run_name}/y_pred_{model_to_load}.npy")
+            y_pred =  np.load(f"models/{run_name}/y_pred_epoch_{str(epoch)}.npy")
             labels = np.load(f"models/{run_name}/y_true.npy")
         
         else:
@@ -94,8 +94,16 @@ if __name__ == "__main__":
             labels = np.concatenate(labels_list)
             y_pred = np.concatenate(y_pred_list)
 
-            np.save(f"{modeldir}{run_name}/y_pred_{model_to_load}.npy", y_pred)
+            np.save(f"{modeldir}{run_name}/y_pred_epoch_{str(epoch)}.npy", y_pred)
             np.save(f"{modeldir}{run_name}/y_true.npy", labels)
+
+        df = pd.DataFrame(train_data.species_counts, columns=['n_occ']).reset_index().rename(columns={'index':'species'})
+        df['auc'] = [roc_auc_score(labels[:,i], y_pred[:,i]) for i in range(labels.shape[1])]
+        df.to_csv(f"{modeldir}{run_name}/species_auc_epoch_{str(epoch)}.csv", index=False)
+        print(f"Median AUC across species = {df['auc'].median()}")
+        
+        site_auc = [roc_auc_score(labels[i,:], y_pred[i,:]) for i in range(labels.shape[0])]
+        print(f"Median AUC across sites = {np.median(site_auc)}")
 
         if threshold == 'best':
             f1_scores = []
@@ -133,5 +141,5 @@ if __name__ == "__main__":
         targets = train_data.species_pred
         pred_species = [' '.join([str(x) for x in targets[np.where(y_pred[i, :] > val_threshold)]]) for i in range(y_pred.shape[0])]
         sub_df = pd.DataFrame({'Id': test_data.submission_id, 'Predicted': pred_species})
-        sub_df.to_csv(f"{modeldir}{run_name}/submission_epoch_{epoch}_thresh_{str(val_threshold)}.csv", index=False)
+        sub_df.to_csv(f"{modeldir}{run_name}/submission_epoch_{str(epoch)}_thresh_{str(val_threshold)}.csv", index=False)
 
