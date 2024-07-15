@@ -1,6 +1,5 @@
 import os
 import torch
-import wandb
 import argparse
 import json
 import numpy as np
@@ -11,7 +10,6 @@ from torcheval.metrics.functional import binary_auroc
 from util import *
 from losses import *
 from models import MultimodalModel
-from data.PatchesProviders import RasterPatchProvider, MultipleRasterPatchProvider, JpegPatchProvider
 from data.Datasets import PatchesDatasetCooccurrences
 
 datadir = 'data/' 
@@ -20,7 +18,6 @@ modeldir = 'models/'
 def setup_model(
     env_model,
     sat_model,
-    dataset,
     random_bg,
     embed_shape,
     learning_rate,
@@ -33,35 +30,21 @@ def setup_model(
     # make model setup dictionary
     model_setup = {}
     if env_model is not None: 
-        env_model['covariates'] = [get_path_to(cov, dataset, datadir) for cov in env_model['covariates']]
+        env_model['covariates'] = [get_path_to(cov, datadir) for cov in env_model['covariates']]
         model_setup['env'] = env_model
     if sat_model is not None: 
-        sat_model['covariates'] = [get_path_to(cov, dataset, datadir) for cov in sat_model['covariates']]
+        sat_model['covariates'] = [get_path_to(cov, datadir) for cov in sat_model['covariates']]
         model_setup['sat'] = sat_model
 
     assert len(model_setup) <= 2
     multimodal = (len(model_setup) == 2)
     if multimodal: assert random_bg is False
-    
-    if list(model_setup.values())[0]['model_name'] == 'MultiResolutionAutoencoder': 
-        assert multimodal == False
-        autoencoder = True
-    else: 
-        autoencoder = False
 
-    if dataset == 'glc23':
-        sep = ';'
-        item_columns=['lat','lon','patchID','dayOfYear']
-        item_columns_val=item_columns
-        sat_id_col = 'patchID'
-        select_sat_train=['rgb','nir']
-    elif dataset == 'glc24':
-        sep = ','
-        item_columns=['lat','lon','surveyId','dayOfYear']
-        item_columns_val=['lat','lon','surveyId']
-        sat_id_col = 'surveyId'
-        select_sat_train=['po_train_patches_rgb','po_train_patches_nir']
-        select_sat_val=['pa_train_patches_rgb','pa_train_patches_nir']
+    sep = ';'
+    item_columns=['lat','lon','patchID','dayOfYear']
+    item_columns_val=item_columns
+    sat_id_col = 'patchID'
+    select_sat_train=['rgb','nir']
 
     # covariate patch providers 
     train_providers = []
@@ -72,24 +55,15 @@ def setup_model(
         elif model_name == 'sat':
             train_providers.append(make_providers(model_dict['covariates'], model_dict['patch_size'], flatten, sat_id_col, select_sat_train))
 
-    if dataset == 'glc23':
-        val_providers = train_providers
-    elif dataset == 'glc24':
-        val_providers = []
-        for model_name, model_dict in model_setup.items():
-            flatten = True if model_dict['model_name'] == 'MLP' else False 
-            if model_name == 'env':
-                val_providers.append(make_providers(model_dict['covariates'], model_dict['patch_size'], flatten))
-            elif model_name == 'sat':
-                val_providers.append(make_providers(model_dict['covariates'], model_dict['patch_size'], flatten, sat_id_col, select_sat_val))
-
+    val_providers = train_providers
+    
     # get paths to data for given dataset
-    train_occ_path = get_path_to("po", dataset, datadir)
+    train_occ_path = get_path_to("po", datadir)
     if random_bg:
-        random_bg_path = get_path_to("random_bg", dataset, datadir)
+        random_bg_path = get_path_to("random_bg", datadir)
     else:
         random_bg_path = None
-    val_occ_path = get_path_to("pa", dataset, datadir)
+    val_occ_path = get_path_to("pa", datadir)
 
     # training data
     print("\nMaking dataset for training occurrences")
@@ -123,7 +97,7 @@ def setup_model(
 
     if test:
         print("\nMaking dataset for test set")
-        test_occ_path = get_path_to("test", dataset, datadir)
+        test_occ_path = get_path_to("test", datadir)
         test_data = PatchesDatasetCooccurrences(
             occurrences=test_occ_path, 
             providers=val_providers, 
@@ -143,9 +117,9 @@ def setup_model(
     optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
     
     if test:
-        return train_data, val_data, test_data, model, optimizer, multimodal, autoencoder
+        return train_data, val_data, test_data, model, optimizer, multimodal
     else:
-        return train_data, val_data, model, optimizer, multimodal, autoencoder
+        return train_data, val_data, model, optimizer, multimodal
 
 if __name__ == "__main__": 
     parser = argparse.ArgumentParser()
@@ -165,12 +139,8 @@ if __name__ == "__main__":
     config = {k: v if v != "" else None for k,v in config.items()}
 
     # get variables from config 
-    log_wandb = config['log_wandb']
-    wandb_project = config['wandb_project']
-    wandb_id = config['wandb_id']
     env_model = config['env_model']
     sat_model = config['sat_model']
-    dataset = config['dataset']
     random_bg = config['random_bg']
     embed_shape = config['embed_shape']
     loss = config['loss']
@@ -191,10 +161,9 @@ if __name__ == "__main__":
     print(f"DEVICE: {dev}")
 
     # setup data and model
-    train_data, val_data, model, optimizer, multimodal, autoencoder = setup_model(
+    train_data, val_data, model, optimizer, multimodal = setup_model(
         env_model=env_model,
         sat_model=sat_model,
-        dataset=dataset,
         random_bg=random_bg,
         embed_shape=embed_shape, 
         learning_rate=learning_rate, 
@@ -211,23 +180,6 @@ if __name__ == "__main__":
     species_weights = torch.tensor(train_data.species_weights).to(dev)
     val_loss_fn = torch.nn.BCELoss()
 
-    # log run in wandb
-    if log_wandb:
-        if wandb_id is None:
-            wandb_id = wandb.util.generate_id()
-        print(f"\nwandb id: {wandb_id}")
-        run = wandb.init(
-            project=wandb_project, name=run_name, resume="allow", id=wandb_id,
-            config={
-                'dataset': dataset, 'pseudoabsences': random_bg,
-                'n_species_train': train_data.n_species_pred, 'n_species_val': val_data.n_species_pred_in_data,
-                'env_model': env_model, 'sat_model': sat_model,
-                'embed_shape': embed_shape, 'epochs': n_epochs, 
-                'batch_size': batch_size, 'lr': learning_rate, 'weight_decay': weight_decay,
-                'optimizer':'SGD', 'loss': loss, 'lambda2': lambda2, 
-                # 'autoencoder_loss': autoencoder_loss_fn, 
-                'val_loss': 'BCEloss', 'id': wandb_id})
-        
     # load checkpoint if it exists
     if not os.path.isdir(modeldir+run_name): 
         os.mkdir(modeldir+run_name)
@@ -261,12 +213,6 @@ if __name__ == "__main__":
                     inputs = po_inputs[0].to(torch.float32).to(dev)
                 else:
                     inputs = torch.cat((po_inputs[0], bg_inputs[0]), 0).to(torch.float32).to(dev)
-
-                # if autoencoder:
-                #     input_patches = [transforms.CenterCrop(size=aspp.receptive_field)(inputs) for aspp in model.aspp_branches][::-1]
-                #     y_pred, xlist_decoded = model(inputs)
-                #     y_pred = torch.sigmoid(y_pred)
-                # else:
                 y_pred = torch.sigmoid(model(inputs))
                     
             if not random_bg:
@@ -332,9 +278,6 @@ if __name__ == "__main__":
         df['auc'] = auc_list.cpu().detach().numpy()
         df.to_csv(f"{modeldir}{run_name}/last_species_auc.csv", index=False)
 
-        if log_wandb:
-            wandb.log({"train_loss": avg_train_loss, "val_loss": avg_val_loss, "val_auc": auc}) 
-
         # model checkpoint
         torch.save({
             'epoch': epoch,
@@ -359,24 +302,3 @@ if __name__ == "__main__":
                 'val_auc': auc
             }, f"{modeldir}{run_name}/best_val_auc.pth")  
 
-# run_name = '0612_env_3'
-# path_to_config = f"{modeldir}{run_name}/config.json"
-# with open(path_to_config, "r") as f: config = json.load(f)
-# config = {k: v if v != "" else None for k,v in config.items()}
-# log_wandb = config['log_wandb']
-# wandb_project = config['wandb_project']
-# wandb_id = config['wandb_id']
-# env_model = config['env_model']
-# sat_model = config['sat_model']
-# dataset = config['dataset']
-# random_bg = config['random_bg']
-# embed_shape = config['embed_shape']
-# loss = config['loss']
-# lambda2 = config['lambda2']
-# n_epochs = config['n_epochs']
-# batch_size = config['batch_size']
-# learning_rate = config['learning_rate']
-# weight_decay = config['weight_decay']
-# num_workers_train = config['num_workers_train']
-# num_workers_val = config['num_workers_val']
-# seed = config['seed']

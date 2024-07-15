@@ -29,7 +29,6 @@ if __name__ == "__main__":
     wandb_id = config['wandb_id']
     env_model = config['env_model']
     sat_model = config['sat_model']
-    dataset = config['dataset']
     random_bg = config['random_bg']
     embed_shape = config['embed_shape']
     loss = config['loss']
@@ -49,7 +48,6 @@ if __name__ == "__main__":
     train_data, val_data, test_data, model, optimizer, multimodal, autoencoder = setup_model(
         env_model=env_model,
         sat_model=sat_model,
-        dataset=dataset,
         random_bg=random_bg,
         embed_shape=embed_shape, 
         learning_rate=learning_rate, 

@@ -7,3 +7,5 @@ __pycache__
 /models/
 /wandb/*
 /GLC_spring/
+/figures/
+/data/test_blind.csv

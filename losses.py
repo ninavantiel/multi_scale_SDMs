@@ -17,15 +17,5 @@ def weighted_loss(y_pred, labels, species_weights, lambda2=1, bg_pred=None):
         loss = loss_dl_pos + loss_dl_neg
     return loss
 
-def an_full_loss(y_pred, labels, bg_pred=None, lambda_=2048):
-    loss_dl_pos = (log_loss(y_pred) * labels * lambda_).mean()
-    loss_dl_neg = (log_loss(1 - y_pred) * (1 - labels)).mean() 
-    if bg_pred is not None:
-        loss_bg_neg = log_loss(1 - bg_pred).mean()
-        loss = loss_dl_pos + loss_dl_neg + loss_bg_neg
-    else:
-        loss = loss_dl_pos + loss_dl_neg
-    return loss
-
 def log_loss(pred):
     return -torch.log(pred + 1e-5)
