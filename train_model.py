@@ -19,7 +19,6 @@ def setup_model(
     env_model,
     sat_model,
     random_bg,
-    embed_shape,
     learning_rate,
     weight_decay,
     seed,
@@ -78,8 +77,6 @@ def setup_model(
     for i, key in enumerate(model_setup.keys()):
         model_setup[key]['input_shape'] = train_data[0][0][i].shape
         if multimodal:
-            # assert embed_shape is not None
-            # model_setup[key]['output_shape'] = embed_shape
             model_setup[key]['output_shape'] = None
         else:
             model_setup[key]['output_shape'] = train_data.n_species_pred
@@ -142,7 +139,6 @@ if __name__ == "__main__":
     env_model = config['env_model']
     sat_model = config['sat_model']
     random_bg = config['random_bg']
-    embed_shape = config['embed_shape']
     loss = config['loss']
     lambda2 = config['lambda2']
     n_epochs = config['n_epochs']
@@ -165,7 +161,6 @@ if __name__ == "__main__":
         env_model=env_model,
         sat_model=sat_model,
         random_bg=random_bg,
-        embed_shape=embed_shape, 
         learning_rate=learning_rate, 
         weight_decay=weight_decay,
         seed=seed) 
